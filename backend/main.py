@@ -65,23 +65,41 @@ def health():
 
 @app.get("/api/debug/db")
 def debug_db():
-    from db.models import SessionLocal, User, Incident, Notification
     from core.config import get_settings
     s = get_settings()
-    db = SessionLocal()
+    if s.db_backend == "local":
+        from db.models import SessionLocal, User, Incident, Notification
+        db = SessionLocal()
+        try:
+            # ensure tables exist
+            from db.models import init_db
+            init_db()
+            return {
+                "backend": s.db_backend,
+                "database_url": s.database_url,
+                "counts": {
+                    "users": db.query(User).count(),
+                    "incidents": db.query(Incident).count(),
+                    "notifications": db.query(Notification).count(),
+                },
+                "demo_user": {"email": "demo@betterurban.app", "password": "demo1234"},
+            }
+        finally:
+            db.close()
+    # Firebase mode
     try:
+        from core.firebase import get_db
+        db = get_db()
+        users = len(list(db.collection("users").stream()))
+        incidents = len(list(db.collection("incidents").stream()))
+        notifications = len(list(db.collection("notifications").stream()))
         return {
             "backend": s.db_backend,
-            "database_url": s.database_url,
-            "counts": {
-                "users": db.query(User).count(),
-                "incidents": db.query(Incident).count(),
-                "notifications": db.query(Notification).count(),
-            },
+            "counts": {"users": users, "incidents": incidents, "notifications": notifications},
             "demo_user": {"email": "demo@betterurban.app", "password": "demo1234"},
         }
-    finally:
-        db.close()
+    except Exception as exc:  # noqa: BLE001
+        return {"backend": s.db_backend, "error": str(exc)}
 
 
 if __name__ == "__main__":
