@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     firebase_project_id: str = ""
     firebase_credentials_path: str = ""  # path to service account JSON
     firebase_storage_bucket: str = ""
+    firebase_credentials_json: str = ""  # raw service account JSON (alternative to file path)
     firebase_web_api_key: str = ""
 
     # CORS
