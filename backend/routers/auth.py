@@ -81,8 +81,24 @@ def signup(body: SignupRequest):
         "body": "You start with 10 stars. Report your first issue to activate your 3 km alert radius.",
         "createdAt": profile["createdAt"], "read": False,
     })
-    custom_token = fb_auth.create_custom_token(user.uid).decode()
-    return AuthResponse(uid=user.uid, email=user.email, idToken=custom_token, profile=_profile_from_dict({**profile, "id": user.uid}))
+    # Exchange for a real ID token via Firebase REST API
+    import httpx as _httpx
+    from core.config import get_settings as _gs
+    _s = _gs()
+    id_token = None
+    try:
+        with _httpx.Client(timeout=10) as _c:
+            _r = _c.post(
+                f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={_s.firebase_web_api_key}",
+                json={"email": body.email, "password": body.password, "returnSecureToken": True},
+            )
+        if _r.status_code == 200:
+            id_token = _r.json().get("idToken")
+    except Exception:  # noqa: BLE001
+        pass
+    if not id_token:
+        id_token = fb_auth.create_custom_token(user.uid).decode()
+    return AuthResponse(uid=user.uid, email=user.email, idToken=id_token, profile=_profile_from_dict({**profile, "id": user.uid}))
 
 
 @router.post("/login", response_model=AuthResponse)
@@ -151,8 +167,24 @@ def demo_login():
         db.collection("users").document(uid).set(profile)
     snap = db.collection("users").document(uid).get()
     profile = snap.to_dict() or {}
-    custom_token = fb_auth.create_custom_token(uid).decode()
-    return AuthResponse(uid=uid, email=DEMO_EMAIL, idToken=custom_token, profile=_profile_from_dict({**profile, "id": uid}))
+    # Exchange for a real ID token via Firebase REST API
+    import httpx as _httpx
+    from core.config import get_settings as _gs
+    _s = _gs()
+    id_token = None
+    try:
+        with _httpx.Client(timeout=10) as _c:
+            _r = _c.post(
+                f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={_s.firebase_web_api_key}",
+                json={"email": DEMO_EMAIL, "password": DEMO_PASSWORD, "returnSecureToken": True},
+            )
+        if _r.status_code == 200:
+            id_token = _r.json().get("idToken")
+    except Exception:  # noqa: BLE001
+        pass
+    if not id_token:
+        id_token = fb_auth.create_custom_token(uid).decode()
+    return AuthResponse(uid=uid, email=DEMO_EMAIL, idToken=id_token, profile=_profile_from_dict({**profile, "id": uid}))
 
 
 @router.get("/me", response_model=UserOut)
