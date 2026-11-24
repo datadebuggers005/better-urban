@@ -1,0 +1,19 @@
+node_modules
+.next
+out
+build
+dist
+.env*
+!.env.example
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+npm-debug.log*
+
+# Backend
+backend/.venv
+backend/__pycache__
+backend/**/__pycache__
+backend/betterurban.db
+backend/serviceAccountKey.json
+backend/.env

@@ -1,0 +1,19 @@
+01-splash.jpeg  Splash (boot)  /
+02-onboarding.jpeg  Onboarding  /onboarding
+03-auth.jpeg  Sign in / Sign up  /auth
+04-home.jpeg  Home dashboard  /app
+05-report.jpeg  Report an issue  /report/[category]
+06-report-details.jpeg  Report - photo and location  /report/[category]
+07-dispatch.jpeg  Alert dispatched  /report/sent/[id]
+08-track.jpeg  Track a complaint  /track/[id]
+09-track-feedback.jpeg  Track - feedback  /track/[id]
+10-my-reports.jpeg  My complaints  /my-reports
+11-notifications.jpeg  Notifications  /notifications
+12-volunteer.jpeg  Volunteer hub  /volunteer
+13-leaderboard.jpeg  Leaderboard  /leaderboard
+14-profile.jpeg  Profile and settings  /profile
+15-admin.jpeg  Ops console (demo)  /admin
+16-landing-hero.jpeg  Landing - hero  /landing
+17-landing-problem.jpeg  Landing - problem and how  /landing
+18-landing-dispatch.jpeg  Landing - 3 km dispatch  /landing
+19-landing-features.jpeg  Landing - features and impact  /landing
