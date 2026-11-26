@@ -1,40 +1,42 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from core.auth import require_admin, require_officer_or_admin
+from fastapi import APIRouter, Depends, Query, HTTPException
+from core.auth import get_current_user, require_officer_or_admin
 from core.firebase import get_db
 from db.store import is_local, get_store
-from models.schemas import RoleUpdate
-from services.data_quality import audit_data_quality
-from services.duplicates import find_duplicates
-from services.seed_data import DATA_SOURCES
 
 router = APIRouter()
 
 
 @router.get("/incidents")
-def admin_list_incidents(
-    status: str = Query(None),
-    cityId: str = Query(None),
-    categoryId: str = Query(None),
-    wardNumber: int = Query(None),
-    search: str = Query(None),
-    user=Depends(require_officer_or_admin),
-):
+def admin_list_incidents(status: str = Query(None), cityId: str = Query(None), user=Depends(require_officer_or_admin)):
     if is_local():
-        return get_store().list_incidents(
-            city_id=cityId,
-            category_id=categoryId,
-            status=status,
-            ward_number=wardNumber,
-            search=search,
-            limit=300,
-        )
+        items = get_store().list_incidents(city_id=cityId, status=status, limit=200)
+        return items
     db = get_db()
+    # Single where clause to avoid composite index requirements.
     q = db.collection("incidents")
     if cityId:
         q = q.where("cityId", "==", cityId)
-    if status:
+    elif status:
         q = q.where("status", "==", status)
     docs = q.stream()
+    out = []
+    for d in docs:
+        x = d.to_dict()
+        x["id"] = d.id
+        if cityId and status and x.get("status") != status:
+            continue
+        if not cityId and status and x.get("status") != status:
+            continue
+        out.append(x)
+    return out
+
+
+@router.get("/activity-logs")
+def activity_logs(limit: int = Query(50), user=Depends(require_officer_or_admin)):
+    if is_local():
+        return get_store().activity_logs(limit=limit)
+    db = get_db()
+    docs = db.collection("activityLogs").order_by("createdAt", direction="DESCENDING").limit(limit).stream()
     out = []
     for d in docs:
         x = d.to_dict()
@@ -43,84 +45,83 @@ def admin_list_incidents(
     return out
 
 
-@router.get("/activity-logs")
-def admin_activity_logs(limit: int = Query(100), user=Depends(require_officer_or_admin)):
-    if is_local():
-        return get_store().list_activity_logs(limit=limit)
-    return []
-
-
 @router.get("/data-quality")
-def admin_data_quality(user=Depends(require_officer_or_admin)):
+def data_quality(user=Depends(require_officer_or_admin)):
     if is_local():
-        store = get_store()
-        incidents = store.list_incidents(limit=1000)
-        users = store.list_users()
-        return audit_data_quality(incidents, users)
-    return {"totalIncidents": 0, "healthyIncidents": 0, "flaggedIncidents": 0, "qualityScore": 100.0, "summary": {}, "flaggedRecords": []}
+        return get_store().data_quality()
+    from services.data_quality import compute_data_quality
+    db = get_db()
+    return compute_data_quality(db)
 
 
 @router.get("/data-sources")
-def admin_data_sources(user=Depends(require_officer_or_admin)):
-    return DATA_SOURCES
-
-
-@router.get("/feedback")
-def admin_feedback(limit: int = Query(100), user=Depends(require_officer_or_admin)):
+def data_sources(user=Depends(require_officer_or_admin)):
     if is_local():
-        return get_store().list_feedback(limit=limit)
-    return []
+        return get_store().data_sources()
+    from services.data_quality import data_sources as ds
+    return ds()
 
 
 @router.get("/duplicates")
-def admin_duplicates(user=Depends(require_officer_or_admin)):
+def duplicates(user=Depends(require_officer_or_admin)):
     if is_local():
-        store = get_store()
-        incidents = store.list_incidents(limit=500)
-        clusters = []
-        seen = set()
-        for inc in incidents:
-            if inc["id"] in seen:
-                continue
-            matches = [
-                m
-                for m in find_duplicates(
-                    incidents, inc["lat"], inc["lng"], inc["categoryId"], city_id=inc["cityId"]
-                )
-                if m["id"] != inc["id"]
-            ]
-            if matches:
-                seen.add(inc["id"])
-                for m in matches:
-                    seen.add(m["id"])
-                clusters.append({
-                    "primary": {
-                        "id": inc["id"],
-                        "code": inc["code"],
-                        "title": inc["title"],
-                        "categoryId": inc["categoryId"],
-                        "wardNumber": inc.get("wardNumber"),
-                        "status": inc["status"],
-                    },
-                    "duplicates": matches,
-                })
-        return clusters
-    return []
+        return get_store().duplicates()
+    from services.duplicates import find_all_duplicates
+    db = get_db()
+    return find_all_duplicates(db)
 
 
 @router.get("/users")
-def admin_list_users(cityId: str = Query(None), user=Depends(require_officer_or_admin)):
+def list_users(user=Depends(require_officer_or_admin)):
     if is_local():
-        return get_store().list_users(city_id=cityId)
-    return []
+        return get_store().list_users()
+    db = get_db()
+    docs = db.collection("users").stream()
+    out = []
+    for d in docs:
+        x = d.to_dict()
+        x["id"] = d.id
+        x.pop("password", None)
+        out.append(x)
+    return out
 
 
 @router.patch("/users/{user_id}/role")
-def admin_update_role(user_id: str, body: RoleUpdate, user=Depends(require_admin)):
+def update_user_role(user_id: str, body: dict, user=Depends(require_officer_or_admin)):
+    if user.get("role") != "admin":
+        from fastapi import HTTPException
+        raise HTTPException(403, "Only admins can change roles")
     if is_local():
-        updated = get_store().update_user_role(user_id, body.role, actor=user)
-        if not updated:
+        store = get_store()
+        u = store.update_user_role(user_id, body.get("role", "citizen"), actor=user)
+        if not u:
+            from fastapi import HTTPException
             raise HTTPException(404, "User not found")
-        updated.pop("password", None)
-        return updated
-    raise HTTPException(501, "Role update not implemented for Firestore")
+        u.pop("password", None)
+        return u
+    db = get_db()
+    ref = db.collection("users").document(user_id)
+    snap = ref.get()
+    if not snap.exists:
+        from fastapi import HTTPException
+        raise HTTPException(404, "User not found")
+    ref.update({"role": body.get("role", "citizen")})
+    data = snap.to_dict()
+    data["id"] = user_id
+    data["role"] = body.get("role", "citizen")
+    return data
+
+
+@router.get("/feedback")
+def admin_feedback(user=Depends(require_officer_or_admin)):
+    if is_local():
+        return get_store().admin_feedback()
+    db = get_db()
+    docs = db.collection("feedback").stream()
+    out = []
+    for d in docs:
+        x = d.to_dict()
+        x["id"] = d.id
+        out.append(x)
+    out.sort(key=lambda f: f.get("createdAt", ""), reverse=True)
+    return out

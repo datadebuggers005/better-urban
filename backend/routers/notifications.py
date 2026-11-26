@@ -49,9 +49,10 @@ def mark_all_read(userId: str = Query(...), user=Depends(get_current_user)):
         get_store().mark_all_read(userId)
         return {"ok": True}
     db = get_db()
-    docs = db.collection("notifications").where("userId", "==", userId).where("read", "==", False).stream()
+    docs = db.collection("notifications").where("userId", "==", userId).stream()
     batch = db.batch()
     for d in docs:
-        batch.update(d.reference, {"read": True})
+        if not d.to_dict().get("read", False):
+            batch.update(d.reference, {"read": True})
     batch.commit()
     return {"ok": True}

@@ -784,3 +784,90 @@ class LocalStore:
     def sub_categories(self, category_id: str):
         norm = normalize_category_id(category_id)
         return [s for s in SUB_CATEGORIES if s["categoryId"] == norm]
+
+    def find_duplicates(self, lat, lng, category_id, city_id=None, threshold_meters=100.0):
+        from services.duplicates import find_duplicates as fd
+        db = self._session()
+        try:
+            incs = [self._inc_dict(i) for i in db.query(Incident).all()]
+            return fd(incs, lat, lng, category_id, city_id, threshold_meters)
+        finally:
+            db.close()
+
+    # ---------- admin / ops ----------
+    def activity_logs(self, limit: int = 50):
+        from db.models import ActivityLog
+        db = self._session()
+        try:
+            rows = db.query(ActivityLog).order_by(ActivityLog.createdAt.desc()).limit(limit).all()
+            return [{"id": r.id, "actorId": r.actorId, "actorName": r.actorName,
+                     "actorRole": r.actorRole, "action": r.action, "targetType": r.targetType,
+                     "targetId": r.targetId, "detail": r.detail, "metadataJson": r.metadataJson,
+                     "createdAt": r.createdAt} for r in rows]
+        finally:
+            db.close()
+
+    def data_quality(self):
+        db = self._session()
+        try:
+            total = db.query(Incident).count()
+            missing_photo = db.query(Incident).filter(Incident.photoUrl.is_(None)).count()
+            missing_loc = db.query(Incident).filter((Incident.lat == 0) | (Incident.lng == 0)).count()
+            invalid = db.query(Incident).filter(Incident.title == "").count()
+            return {
+                "total": total,
+                "missingPhoto": missing_photo,
+                "missingLocation": missing_loc,
+                "invalidTitle": invalid,
+                "qualityScore": round((1 - (missing_photo + missing_loc + invalid) / max(total, 1)) * 100, 1),
+            }
+        finally:
+            db.close()
+
+    def data_sources(self):
+        return {
+            "sources": ["Seeded demo data", "Citizen reports"],
+            "lastUpdated": _now(),
+            "cities": len(CITIES),
+            "sectors": len(SECTORS),
+        }
+
+    def duplicates(self):
+        from services.duplicates import find_duplicates
+        db = self._session()
+        try:
+            incs = [self._inc_dict(i) for i in db.query(Incident).all()]
+            # find groups of incidents within 100m with same category
+            groups = []
+            seen = set()
+            for i, a in enumerate(incs):
+                if a["id"] in seen:
+                    continue
+                matches = [m for m in find_duplicates(incs, a["lat"], a["lng"], a["categoryId"], a["cityId"]) if m["id"] != a["id"]]
+                if matches:
+                    groups.append({"primary": a["id"], "duplicates": [m["id"] for m in matches]})
+                    seen.add(a["id"])
+                    for m in matches:
+                        seen.add(m["id"])
+            return groups
+        finally:
+            db.close()
+
+    def admin_feedback(self):
+        from db.models import Feedback
+        db = self._session()
+        try:
+            rows = db.query(Feedback).order_by(Feedback.createdAt.desc()).all()
+            return [{"id": f.id, "name": f.name, "email": f.email, "message": f.message,
+                     "rating": f.rating, "createdAt": f.createdAt, "userId": f.userId} for f in rows]
+        finally:
+            db.close()
+
+    def add_notification(self, user_id, title, body, ntype="system", incident_id=None):
+        db = self._session()
+        try:
+            db.add(Notification(id=_uid("n"), userId=user_id, type=ntype, incidentId=incident_id,
+                                title=title, body=body, createdAt=_now(), read=False))
+            db.commit()
+        finally:
+            db.close()

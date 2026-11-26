@@ -28,52 +28,37 @@ def _uid(prefix="id"):
     return f"{prefix}_{''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=8))}"
 
 
-@router.post("/incidents/check-duplicate")
-def check_duplicate(body: DuplicateCheckRequest):
-    if is_local():
-        store = get_store()
-        incidents = store.list_incidents(city_id=body.cityId, limit=500)
-        matches = find_duplicates(incidents, body.lat, body.lng, body.categoryId, city_id=body.cityId)
-        return {"hasDuplicates": len(matches) > 0, "matches": matches}
-    return {"hasDuplicates": False, "matches": []}
-
-
 @router.get("/incidents")
-def list_incidents(
-    cityId: str = Query(None),
-    categoryId: str = Query(None),
-    status: str = Query(None),
-    wardNumber: int = Query(None),
-    search: str = Query(None),
-    reporterId: str = Query(None),
-    limit: int = Query(100),
-):
+def list_incidents(cityId: str = Query(None), status: str = Query(None),
+                   reporterId: str = Query(None), limit: int = Query(100)):
     if is_local():
         store = get_store()
-        return store.list_incidents(
-            city_id=cityId,
-            category_id=categoryId,
-            status=status,
-            ward_number=wardNumber,
-            search=search,
-            reporter_id=reporterId,
-            limit=limit,
-        )
+        items = store.list_incidents(city_id=cityId, status=status, reporter_id=reporterId, limit=limit)
+        return items
     db = get_db()
+    # Single where clause to avoid Firestore composite index requirements.
     q = db.collection("incidents")
     if cityId:
         q = q.where("cityId", "==", cityId)
-    if status:
+    elif status:
         q = q.where("status", "==", normalize_status(status))
-    if reporterId:
+    elif reporterId:
         q = q.where("reporterId", "==", reporterId)
-    docs = q.limit(limit).stream()
+    docs = q.limit(limit * 4 if (status or reporterId) else limit).stream()
     out = []
     for d in docs:
         x = d.to_dict()
         x["id"] = d.id
+        if cityId and status and x.get("status") != normalize_status(status):
+            continue
+        if cityId and reporterId and x.get("reporterId") != reporterId:
+            continue
+        if not cityId and status and x.get("status") != normalize_status(status):
+            continue
+        if not cityId and reporterId and x.get("reporterId") != reporterId:
+            continue
         out.append(x)
-    return out
+    return out[:limit]
 
 
 @router.get("/incidents/{incident_id}")
@@ -82,11 +67,13 @@ def get_incident(incident_id: str):
         store = get_store()
         inc = store.get_incident(incident_id)
         if not inc:
+            from fastapi import HTTPException
             raise HTTPException(404, "Incident not found")
         return inc
     db = get_db()
     snap = db.collection("incidents").document(incident_id).get()
     if not snap.exists:
+        from fastapi import HTTPException
         raise HTTPException(404, "Incident not found")
     data = snap.to_dict()
     data["id"] = snap.id
@@ -117,7 +104,9 @@ def create_incident(body: IncidentCreate, user=Depends(get_current_user)):
     while code is None or code in used:
         code = f"OC-{random.randint(2000, 8999)}"
     now = datetime.now(timezone.utc).isoformat()
-    ward_num = body.wardNumber or ward_for_sector(body.sectorId)
+    ward_num = body.wardNumber if hasattr(body, "wardNumber") else None
+    if ward_num is None:
+        ward_num = ward_for_sector(body.sectorId)
     incident = {
         "code": code,
         "cityId": city["id"],
@@ -131,7 +120,7 @@ def create_incident(body: IncidentCreate, user=Depends(get_current_user)):
         "lng": body.lng,
         "landmark": body.landmark,
         "photoUrl": body.photoUrl,
-        "tags": body.tags,
+        "tags": getattr(body, "tags", []),
         "isAnonymous": body.isAnonymous,
         "reporterId": None if body.isAnonymous else user["id"],
         "reporterName": "Anonymous citizen" if body.isAnonymous else user["name"],
@@ -152,6 +141,9 @@ def create_incident(body: IncidentCreate, user=Depends(get_current_user)):
             }
         ],
         "helpedBy": [],
+        "assignedTo": None,
+        "assignedToName": None,
+        "duplicateOf": None,
         "createdAt": now,
         "resolvedAt": None,
         "closedAt": None,
@@ -192,79 +184,109 @@ def update_status(incident_id: str, body: StatusUpdate, user=Depends(require_off
             assigned_to_name=body.assignedToName,
         )
         if not inc:
+            from fastapi import HTTPException
             raise HTTPException(404, "Incident not found")
         return inc
-
     db = get_db()
     ref = db.collection("incidents").document(incident_id)
     snap = ref.get()
     if not snap.exists:
+        from fastapi import HTTPException
         raise HTTPException(404, "Incident not found")
     inc = snap.to_dict()
     now = datetime.now(timezone.utc).isoformat()
-    norm = normalize_status(body.status)
-    meta = STATUS_META[norm]
+    # normalize status
+    from services.seed_data import normalize_status, STATUS_META
+    norm_status = normalize_status(body.status)
+    meta = STATUS_META[norm_status]
+    old_status = inc.get("status", "")
+    detail = body.note or f"Status updated from {old_status} to {meta['label']} by {user.get('name', 'Officer')}."
     events = list(inc.get("events", [])) + [{
         "id": _uid("ev"),
         "kind": "status",
         "label": meta["label"],
-        "detail": body.note or f"Status updated to {meta['label']} by {user.get('name', 'Officer')}.",
+        "detail": detail,
         "at": now,
     }]
-    updates = {"status": norm, "events": events}
-    if norm == "resolved":
+    updates = {"status": norm_status, "events": events}
+    if body.assignedTo is not None:
+        updates["assignedTo"] = body.assignedTo
+    if body.assignedToName is not None:
+        updates["assignedToName"] = body.assignedToName
+    elif norm_status == "assigned" and not inc.get("assignedToName"):
+        updates["assignedTo"] = user.get("id")
+        updates["assignedToName"] = user.get("name")
+    if norm_status == "resolved":
         updates["resolvedAt"] = now
-    if norm == "closed":
+    if norm_status == "closed":
         updates["closedAt"] = now
     ref.update(updates)
+    if inc.get("reporterId"):
+        db.collection("notifications").add({
+            "userId": inc["reporterId"],
+            "type": "status",
+            "incidentId": incident_id,
+            "title": f"{inc['code']} · {meta['label']}",
+            "body": f"{inc['title']} is now {meta['label']}.",
+            "createdAt": now,
+            "read": False,
+        })
     inc.update(updates)
     inc["id"] = incident_id
     return inc
-
-
-@router.post("/incidents/{incident_id}/close")
-def close_incident(incident_id: str, user=Depends(get_current_user)):
-    if is_local():
-        store = get_store()
-        inc = store.get_incident(incident_id)
-        if not inc:
-            raise HTTPException(404, "Incident not found")
-        is_staff = user.get("role") in ("officer", "admin")
-        is_owner = inc.get("reporterId") == user["id"]
-        if not is_staff and not (is_owner and inc.get("status") == "resolved"):
-            raise HTTPException(403, "Only staff or the reporter of a resolved complaint can close it")
-        updated = store.update_status(incident_id, "closed", actor=user, note="Complaint closed.")
-        return updated
-    raise HTTPException(501, "Close not implemented for Firestore yet")
 
 
 @router.post("/incidents/{incident_id}/rate")
 def rate_incident(incident_id: str, body: RatingInput, user=Depends(get_current_user)):
     if is_local():
         store = get_store()
-        inc = store.get_incident(incident_id)
-        if not inc:
-            raise HTTPException(404, "Incident not found")
-        if inc.get("status") not in ("resolved", "closed"):
-            raise HTTPException(400, "Complaint must be resolved or closed before rating")
         ok = store.rate_incident(incident_id, user["id"], body.rating, body.comment)
         if not ok:
-            raise HTTPException(403, "Only the reporter can rate")
+            from fastapi import HTTPException
+            raise HTTPException(403, "Cannot rate")
         return {"ok": True, "rating": body.rating}
     db = get_db()
     ref = db.collection("incidents").document(incident_id)
     snap = ref.get()
     if not snap.exists:
+        from fastapi import HTTPException
         raise HTTPException(404, "Incident not found")
     inc = snap.to_dict()
     if inc.get("reporterId") != user["id"]:
+        from fastapi import HTTPException
         raise HTTPException(403, "Only the reporter can rate")
     ref.update({"rating": body.rating, "ratingComment": body.comment})
-    db.collection("users").document(user["id"]).update({"stars": user.get("stars", 0) + 10})
+    user_ref = db.collection("users").document(user["id"])
+    user_snap = user_ref.get()
+    if user_snap.exists:
+        user_ref.update({"stars": user_snap.to_dict().get("stars", 0) + 10})
     return {"ok": True, "rating": body.rating}
 
 
-@router.post("/incidents/{incident_id}/help")
+@router.post("/incidents/{incident_id}/close")
+def close_incident(incident_id: str, user=Depends(get_current_user)):
+    if is_local():
+        store = get_store()
+        inc = store.update_status(incident_id, "closed", actor=user)
+        if not inc:
+            from fastapi import HTTPException
+            raise HTTPException(404, "Incident not found")
+        return inc
+    db = get_db()
+    ref = db.collection("incidents").document(incident_id)
+    snap = ref.get()
+    if not snap.exists:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Incident not found")
+    inc = snap.to_dict()
+    if inc.get("reporterId") != user["id"] and user.get("role") not in ("officer", "admin"):
+        from fastapi import HTTPException
+        raise HTTPException(403, "Forbidden")
+    now = datetime.now(timezone.utc).isoformat()
+    ref.update({"status": "closed", "closedAt": now, "mapColor": "GREEN"})
+    inc.update({"status": "closed", "closedAt": now, "mapColor": "GREEN"})
+    inc["id"] = incident_id
+    return inc
 def help_incident(incident_id: str, user=Depends(get_current_user)):
     if is_local():
         store = get_store()
@@ -274,6 +296,7 @@ def help_incident(incident_id: str, user=Depends(get_current_user)):
     ref = db.collection("incidents").document(incident_id)
     snap = ref.get()
     if not snap.exists:
+        from fastapi import HTTPException
         raise HTTPException(404, "Incident not found")
     inc = snap.to_dict()
     helped = inc.get("helpedBy", [])
@@ -281,5 +304,30 @@ def help_incident(incident_id: str, user=Depends(get_current_user)):
         return {"ok": True, "already": True}
     helped.append(user["id"])
     ref.update({"helpedBy": helped})
-    db.collection("users").document(user["id"]).update({"stars": user.get("stars", 0) + 25, "helped": user.get("helped", 0) + 1})
+    user_ref = db.collection("users").document(user["id"])
+    user_snap = user_ref.get()
+    if user_snap.exists:
+        user_ref.update({"stars": user_snap.to_dict().get("stars", 0) + 25, "helped": user_snap.to_dict().get("helped", 0) + 1})
     return {"ok": True}
+
+
+@router.post("/incidents/check-duplicate")
+def check_duplicate(body: dict):
+    lat = body.get("lat", 0)
+    lng = body.get("lng", 0)
+    category_id = body.get("categoryId", "")
+    city_id = body.get("cityId", "metro")
+    if is_local():
+        store = get_store()
+        matches = store.find_duplicates(lat, lng, category_id, city_id)
+    else:
+        from services.duplicates import find_duplicates
+        db = get_db()
+        docs = db.collection("incidents").where("cityId", "==", city_id).stream() if city_id else db.collection("incidents").stream()
+        incs = []
+        for d in docs:
+            x = d.to_dict()
+            x["id"] = d.id
+            incs.append(x)
+        matches = find_duplicates(incs, lat, lng, category_id, city_id)
+    return {"hasDuplicates": len(matches) > 0, "matches": matches}
