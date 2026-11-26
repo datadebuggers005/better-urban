@@ -142,7 +142,15 @@ def create_incident(body: IncidentCreate, user=Depends(get_current_user)):
         "alertedCount": audience,
         "notifiedOrgs": orgs_for_city(city["name"]),
         "notifiedNgos": DEMO_NGOS,
-        "events": [],
+        "events": [
+            {
+                "id": _uid("ev"),
+                "kind": "submitted",
+                "label": "Submitted",
+                "detail": f"Complaint logged in {city['name']} (Ward {ward_num}).",
+                "at": now,
+            }
+        ],
         "helpedBy": [],
         "createdAt": now,
         "resolvedAt": None,
@@ -152,6 +160,22 @@ def create_incident(body: IncidentCreate, user=Depends(get_current_user)):
     }
     ref = db.collection("incidents").add(incident)
     incident["id"] = ref[1].id
+    # notification for reporter
+    if not body.isAnonymous:
+        db.collection("notifications").add({
+            "userId": user["id"],
+            "type": "status",
+            "incidentId": incident["id"],
+            "title": f"{code} · Submitted",
+            "body": f"Your report has been received by the {city['name']} control room.",
+            "createdAt": now,
+            "read": False,
+        })
+    # award stars
+    user_ref = db.collection("users").document(user["id"])
+    user_snap = user_ref.get()
+    if user_snap.exists:
+        user_ref.update({"stars": user_snap.to_dict().get("stars", 0) + 10})
     return incident
 
 
