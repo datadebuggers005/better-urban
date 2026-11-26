@@ -87,7 +87,7 @@ function MiniHome() {
       <div className="flex items-center justify-between px-1">
         <div>
           <p className="text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">Select city</p>
-          <p className="text-[13px] font-semibold">Metro City</p>
+          <p className="text-[13px] font-semibold">Delhi</p>
         </div>
         <span className="flex size-6 items-center justify-center rounded-full border border-line bg-white">
           <Bell className="size-3" />

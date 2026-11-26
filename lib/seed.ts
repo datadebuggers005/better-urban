@@ -78,7 +78,7 @@ export function buildSeed(): {
       severity: "high",
       radiusKm: 3,
       alertedCount: 12,
-      notifiedOrgs: orgsForCity("Metro City"),
+      notifiedOrgs: orgsForCity("Delhi"),
       notifiedNgos: DEMO_NGOS,
       events: [{ id: "ev_0", kind: "submitted", label: "Submitted", detail: "Logged in Ward 18.", at: now }],
       helpedBy: [],

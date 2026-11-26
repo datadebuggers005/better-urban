@@ -97,7 +97,7 @@ for i in range(15):
         "reporterName": "Riya Sharma" if i < 3 else f"Citizen {i}",
         "status": ["resolved", "submitted", "in_progress", "reported", "verified"][i % 5],
         "mapColor": "RED", "severity": "medium", "radiusKm": 3.0, "alertedCount": 10,
-        "notifiedOrgs": orgs_for_city("Metro City"), "notifiedNgos": DEMO_NGOS,
+        "notifiedOrgs": orgs_for_city("Delhi"), "notifiedNgos": DEMO_NGOS,
         "events": [], "helpedBy": [], "createdAt": _now(), "resolvedAt": None,
         "closedAt": None, "rating": 5 if i % 5 == 0 else None, "ratingComment": None,
         "tags": [], "duplicateOf": None, "assignedTo": None, "assignedToName": None,
@@ -109,7 +109,7 @@ print("Seeded 15 incidents")
 db.collection("notifications").add({
     "userId": uid, "type": "status", "incidentId": None,
     "title": "OC-2049 · Field team assigned",
-    "body": "Your report was acknowledged by the Metro City control room.",
+    "body": "Your report was acknowledged by the Delhi control room.",
     "createdAt": _now(), "read": False,
 })
 print("Done. Firebase seeded with OCOR demo data.")

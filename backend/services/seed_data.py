@@ -3,11 +3,11 @@ import math
 from typing import List, Dict
 
 CITIES = [
-    {"id": "metro", "name": "Metro City", "short": "Metro", "center": {"lat": 28.6448, "lng": 77.2167}},
-    {"id": "riverport", "name": "Riverport", "short": "River", "center": {"lat": 19.076, "lng": 72.8777}},
-    {"id": "northvale", "name": "Northvale", "short": "North", "center": {"lat": 12.9716, "lng": 77.5946}},
-    {"id": "oldtown", "name": "Old Town", "short": "Old", "center": {"lat": 18.5204, "lng": 73.8567}},
-    {"id": "greenfield", "name": "Greenfield", "short": "Green", "center": {"lat": 26.9124, "lng": 75.7873}},
+    {"id": "metro", "name": "Delhi", "short": "Delhi", "center": {"lat": 28.6448, "lng": 77.2167}},
+    {"id": "riverport", "name": "Mumbai", "short": "Mumbai", "center": {"lat": 19.076, "lng": 72.8777}},
+    {"id": "northvale", "name": "Bengaluru", "short": "Bengaluru", "center": {"lat": 12.9716, "lng": 77.5946}},
+    {"id": "oldtown", "name": "Pune", "short": "Pune", "center": {"lat": 18.5204, "lng": 73.8567}},
+    {"id": "greenfield", "name": "Jaipur", "short": "Jaipur", "center": {"lat": 26.9124, "lng": 75.7873}},
 ]
 
 SECTORS: List[Dict] = []
