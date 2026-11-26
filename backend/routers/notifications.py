@@ -13,12 +13,13 @@ def list_notifications(userId: str = Query(...), user=Depends(get_current_user))
     if is_local():
         return get_store().list_notifications(userId)
     db = get_db()
-    docs = db.collection("notifications").where("userId", "==", userId).order_by("createdAt", direction="DESCENDING").stream()
+    docs = db.collection("notifications").where("userId", "==", userId).stream()
     out = []
     for d in docs:
         x = d.to_dict()
         x["id"] = d.id
         out.append(x)
+    out.sort(key=lambda n: n.get("createdAt", ""), reverse=True)
     return out
 
 

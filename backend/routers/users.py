@@ -1,9 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from core.auth import get_current_user
 from core.firebase import get_db
-from core.config import get_settings
 from db.store import is_local, get_store
-from models.schemas import UserUpdate
 
 router = APIRouter()
 
@@ -27,10 +25,10 @@ def get_user(user_id: str):
 
 
 @router.patch("/users/{user_id}")
-def update_user(user_id: str, body: UserUpdate, user=Depends(get_current_user)):
+def update_user(user_id: str, body: dict, user=Depends(get_current_user)):
     if user["id"] != user_id and user.get("role") != "admin":
         raise HTTPException(403, "Cannot edit another user")
-    updates = {k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None}
+    updates = {k: v for k, v in body.items() if v is not None}
     if is_local():
         store = get_store()
         u = store.update_user(user_id, updates)
@@ -54,12 +52,13 @@ def list_notifications(user_id: str, user=Depends(get_current_user)):
     if is_local():
         return get_store().list_notifications(user_id)
     db = get_db()
-    docs = db.collection("notifications").where("userId", "==", user_id).order_by("createdAt", direction="DESCENDING").stream()
+    docs = db.collection("notifications").where("userId", "==", user_id).stream()
     out = []
     for d in docs:
         x = d.to_dict()
         x["id"] = d.id
         out.append(x)
+    out.sort(key=lambda n: n.get("createdAt", ""), reverse=True)
     return out
 
 
