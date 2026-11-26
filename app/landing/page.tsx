@@ -20,9 +20,9 @@ import { BrandMark } from "@/components/ui";
 import { RadiusGraphic } from "@/components/radius-graphic";
 
 export const metadata: Metadata = {
-  title: "Better Urban — One report alerts 3 km of your city",
+  title: "OCOR — One report alerts 3 km of your city",
   description:
-    "Better Urban is a civic and emergency dispatch network. Report an issue once and alert authorities, NGOs and every citizen within 3 km. Track the fix, rate it, close the loop.",
+    "OCOR is a civic and emergency dispatch network. Report an issue once and alert authorities, NGOs and every citizen within 3 km. Track the fix, rate it, close the loop.",
 };
 
 const STEPS = [
@@ -146,12 +146,13 @@ export default function LandingPage() {
           <header className="flex items-center justify-between rounded-2xl border border-line bg-paper/90 px-4 py-3 backdrop-blur">
             <Link href="/landing" className="flex items-center gap-2">
               <BrandMark size={30} />
-              <span className="font-display text-[15px] font-semibold tracking-tight">Better Urban</span>
+              <span className="font-display text-[15px] font-semibold tracking-tight">OCOR</span>
             </Link>
             <nav className="hidden items-center gap-6 text-[12px] text-muted md:flex">
               <a href="#problem" className="hover:text-ink">Problem</a>
               <a href="#how" className="hover:text-ink">How it works</a>
               <a href="#features" className="hover:text-ink">Features</a>
+              <a href="#trust" className="hover:text-ink">Trust</a>
               <a href="#impact" className="hover:text-ink">Impact</a>
             </nav>
             <Link
@@ -177,7 +178,7 @@ export default function LandingPage() {
                 <span className="text-ink/45">Three kilometres.</span>
               </h1>
               <p className="mt-4 max-w-[520px] text-[14px] leading-relaxed text-muted sm:text-[15px]">
-                Better Urban turns a single citizen complaint into a coordinated response. Your report
+                OCOR turns a single citizen complaint into a coordinated response. Your report
                 immediately reaches the municipal control room, verified NGOs and every neighbour inside
                 3 km — then stays public until someone actually fixes it.
               </p>
@@ -207,7 +208,7 @@ export default function LandingPage() {
               <MiniHome />
               <div className="absolute -left-2 bottom-8 hidden rounded-xl border border-line bg-white px-3 py-2 shadow-lg lg:block">
                 <p className="text-[9px] uppercase tracking-[0.12em] text-muted">Alert dispatched</p>
-                <p className="text-[11px] font-semibold">BU-2048 · 63 citizens pinged</p>
+                <p className="text-[11px] font-semibold">OC-2048 · 63 citizens pinged</p>
               </div>
               <div className="absolute -right-2 top-6 hidden rounded-xl border border-line bg-white px-3 py-2 shadow-lg lg:block">
                 <p className="text-[9px] uppercase tracking-[0.12em] text-muted">Closed the loop</p>
@@ -295,7 +296,7 @@ export default function LandingPage() {
                 Help is not a helpline. It&apos;s your neighbourhood.
               </h2>
               <p className="mt-3 max-w-[460px] text-[13px] leading-relaxed text-cream/65">
-                The moment a report lands, Better Urban fans it out to three channels at once. The radius
+                The moment a report lands, OCOR fans it out to three channels at once. The radius
                 is computed from real coordinates — on the demo, every alerted citizen is a seeded profile
                 inside 3 km.
               </p>
@@ -364,6 +365,39 @@ export default function LandingPage() {
             </div>
           </section>
 
+          {/* trust */}
+          <section id="trust" className="mt-16 md:mt-24">
+            <p className="label-caps">Trust, privacy &amp; architecture</p>
+            <h2 className="mt-1 font-display text-[26px] font-semibold tracking-tight sm:text-[34px]">
+              Engineered with clear boundaries and honest disclosures.
+            </h2>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                {
+                  t: "Server-side AI & secret isolation",
+                  b: "AI credentials stay on the server — never shipped in browser scripts. Gemini triage runs server-side with human verification.",
+                },
+                {
+                  t: "Consent-first location",
+                  b: "Device geolocation runs only when requested by the reporter. Residents can always type a neighbourhood or drop a pin instead.",
+                },
+                {
+                  t: "Duplicate detection",
+                  b: "Incoming reports are compared against recent neighbourhood submissions to flag potential duplicates before queues become cluttered.",
+                },
+                {
+                  t: "Clear demo vs. cloud separation",
+                  b: "When cloud credentials are inactive, OCOR runs in a clearly labelled local demo mode without pretending to dispatch municipal crews.",
+                },
+              ].map((item) => (
+                <div key={item.t} className="rounded-2xl border border-line bg-white p-5">
+                  <p className="mt-1 font-display text-[14.5px] font-semibold">{item.t}</p>
+                  <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted">{item.b}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
           {/* impact */}
           <section id="impact" className="mt-16 md:mt-24">
             <div className="grid gap-3 md:grid-cols-[1.2fr_0.8fr]">
@@ -405,7 +439,7 @@ export default function LandingPage() {
                   <p className="label-caps">Demo, honestly</p>
                   <p className="mt-1 text-[11px] leading-relaxed text-muted">
                     This is a buildathon prototype. Cities, citizens, tickets and dispatch events are
-                    seeded demo data. Authority and NGO notifications are simulated. Better Urban is not
+                    seeded demo data. Authority and NGO notifications are simulated. OCOR is not
                     affiliated with any government body and uses no official logos.
                   </p>
                 </div>
@@ -427,7 +461,7 @@ export default function LandingPage() {
                 href="/auth"
                 className="inline-flex h-11 items-center gap-2 rounded-xl bg-ink px-5 text-[13px] font-semibold text-cream"
               >
-                Launch Better Urban <ArrowRight className="size-4" />
+                Launch OCOR <ArrowRight className="size-4" />
               </Link>
               <a
                 href="#problem"
@@ -444,7 +478,7 @@ export default function LandingPage() {
           <footer className="mt-10 flex flex-col gap-3 border-t border-line pt-6 text-[11px] text-muted sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
               <BrandMark size={22} />
-              <span className="font-display text-[12.5px] font-semibold text-ink">Better Urban</span>
+              <span className="font-display text-[12.5px] font-semibold text-ink">OCOR</span>
               <span>· Built for the Tutedude Buildathon 2026</span>
             </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1">
