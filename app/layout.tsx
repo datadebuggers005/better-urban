@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Sora } from "next/font/google";
 import "./globals.css";
 import { StoreHydrator } from "@/components/store-hydrator";
+import { BRAND } from "@/lib/brand";
+import { OCOR_PALETTE } from "@/lib/theme";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -17,16 +19,16 @@ const sora = Sora({
 });
 
 export const metadata: Metadata = {
-  title: "Better Urban — Better Together",
+  title: BRAND.fullName,
   description:
-    "One report alerts authorities, NGOs and every citizen inside 3 km. Better Urban is a civic and emergency dispatch network for Indian cities.",
-  applicationName: "Better Urban",
+    "Our City, Our Responsibility — report civic issues, track live ward resolution maps, and collaborate with city officers.",
+  applicationName: BRAND.name,
   manifest: "/manifest.webmanifest",
-  appleWebApp: { capable: true, statusBarStyle: "default", title: "Better Urban" },
+  appleWebApp: { capable: true, statusBarStyle: "default", title: BRAND.name },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#f7f4ec",
+  themeColor: OCOR_PALETTE.core.surfaceLight,
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",

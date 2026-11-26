@@ -81,4 +81,3 @@ db.collection("notifications").add({
     "read": False,
 })
 print("Done. Firebase seeded.")
-PY

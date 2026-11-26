@@ -1,16 +1,23 @@
 {
-  "name": "Better Urban — Better Together",
-  "short_name": "Better Urban",
-  "description": "Report a city issue and alert authorities, NGOs and every citizen inside 3 km.",
+  "name": "OCOR — Our City, Our Responsibility",
+  "short_name": "OCOR",
+  "description": "Report civic issues, track resolutions live, and alert authorities, NGOs, and citizens within 3 km.",
   "start_url": "/app",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#f7f4ec",
-  "theme_color": "#0e1d38",
+  "background_color": "#f2f9fd",
+  "theme_color": "#0b3c5d",
   "icons": [
     {
       "src": "/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/ocor-logo.jpg",
+      "sizes": "669x515",
+      "type": "image/jpeg",
       "purpose": "any"
     }
   ]

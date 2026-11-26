@@ -30,7 +30,7 @@ def get_user(user_id: str):
 def update_user(user_id: str, body: UserUpdate, user=Depends(get_current_user)):
     if user["id"] != user_id and user.get("role") != "admin":
         raise HTTPException(403, "Cannot edit another user")
-    updates = {k: v for k, v in body.dict(exclude_unset=True).items() if v is not None}
+    updates = {k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None}
     if is_local():
         store = get_store()
         u = store.update_user(user_id, updates)

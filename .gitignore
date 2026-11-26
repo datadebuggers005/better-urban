@@ -15,5 +15,7 @@ backend/.venv
 backend/__pycache__
 backend/**/__pycache__
 backend/betterurban.db
+backend/*.db
+backend/uploads/
 backend/serviceAccountKey.json
 backend/.env

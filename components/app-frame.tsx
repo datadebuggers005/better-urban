@@ -2,10 +2,10 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { BrandMark, Wordmark } from "@/components/ui";
 import { BottomNav } from "@/components/bottom-nav";
 import { cn } from "@/lib/utils";
-import { useApp } from "@/lib/store";
+import { useApp, useCurrentUser } from "@/lib/store";
+import { BRAND } from "@/lib/brand";
 
 export function AppFrame({
   children,
@@ -16,19 +16,26 @@ export function AppFrame({
   nav?: boolean;
   className?: string;
 }) {
+  const user = useCurrentUser();
+  const isStaff = user?.role === "officer" || user?.role === "admin";
+
   return (
     <div className="app-backdrop min-h-dvh">
       {nav ? (
-        <div className="hidden md:flex items-center justify-between max-w-[480px] mx-auto px-4 py-3 border-b border-line">
+        <div className="hidden md:flex items-center justify-between max-w-[560px] mx-auto px-4 py-3 border-b border-line">
           <Link href="/app" className="flex items-center gap-2">
-            <BrandMark size={24} />
-            <span className="font-display text-[13px] font-semibold">Better Urban</span>
+            <img src={BRAND.logo} alt={BRAND.name} className="h-7 w-auto rounded object-contain" />
+            <span className="font-display text-[13px] font-semibold text-ink">{BRAND.name}</span>
           </Link>
           <nav className="flex items-center gap-4 text-[12px]">
             <Link href="/app" className="text-muted hover:text-ink">Home</Link>
+            <Link href="/map" className="text-muted hover:text-ink">Live Map</Link>
             <Link href="/my-reports" className="text-muted hover:text-ink">Reports</Link>
             <Link href="/volunteer" className="text-muted hover:text-ink">Volunteer</Link>
             <Link href="/profile" className="text-muted hover:text-ink">Profile</Link>
+            {isStaff ? (
+              <Link href="/admin" className="font-semibold text-primary hover:underline">Admin</Link>
+            ) : null}
           </nav>
         </div>
       ) : null}
@@ -46,8 +53,8 @@ export function FullLoader({ label = "Locating city grid…" }: { label?: string
   return (
     <div className="app-backdrop flex min-h-dvh items-center justify-center">
       <div className="flex flex-col items-center gap-3 text-ink">
-        <BrandMark size={54} className="animate-pulse" />
-        <p className="font-display text-[15px] font-semibold">Better Urban</p>
+        <img src={BRAND.logo} alt={BRAND.name} className="h-16 w-auto animate-pulse rounded-xl object-contain" />
+        <p className="font-display text-[15px] font-semibold">{BRAND.fullName}</p>
         <p className="text-[11px] uppercase tracking-[0.18em] text-muted">{label}</p>
       </div>
     </div>
@@ -64,7 +71,7 @@ export function HydrationGate({ children }: { children: ReactNode }) {
 export function DemoBadge() {
   return (
     <span className="inline-flex items-center gap-1 rounded-full border border-line bg-white/70 px-2 py-0.5 text-[9.5px] font-semibold uppercase tracking-[0.12em] text-muted">
-      Demo data
+      Local Mode
     </span>
   );
 }

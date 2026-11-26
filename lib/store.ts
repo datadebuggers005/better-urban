@@ -12,10 +12,28 @@ import type {
   Sector,
   User,
 } from "./types";
-import { DEMO_NGOS, STATUS_META, cityById, orgsForCity } from "./catalog";
-import { haversineKm } from "./geo";
+import { CITIES, DEMO_NGOS, STATUS_META, cityById, mapColorForStatus, orgsForCity } from "./catalog";
 import { uid } from "./utils";
-import { DEMO_PASSWORD, DEMO_USER_ID, buildSeed } from "./seed";
+import { buildSeed } from "./seed";
+import {
+  apiCloseIncident,
+  apiCreateIncident,
+  apiDemoLogin,
+  apiHelpIncident,
+  apiLeaderboard,
+  apiListCities,
+  apiListIncidents,
+  apiListNotifications,
+  apiListSectors,
+  apiLogin,
+  apiMarkAllNotificationsRead,
+  apiMarkNotificationRead,
+  apiMe,
+  apiRateIncident,
+  apiSignup,
+  apiUpdateIncidentStatus,
+  apiUpdateUser,
+} from "./api";
 
 type Result = { ok: boolean; error?: string };
 
@@ -25,64 +43,64 @@ type AppState = {
   users: User[];
   incidents: Incident[];
   notifications: AppNotification[];
+  token: string | null;
   sessionUserId: string | null;
+  currentUser: User | null;
   activeCityId: string;
   onboarded: boolean;
   hydrated: boolean;
 
-  bootstrap: () => void;
+  bootstrap: () => Promise<void>;
+  refreshIncidents: (cityId?: string) => Promise<void>;
+  refreshNotifications: () => Promise<void>;
   setHydrated: () => void;
 
-  login: (identifier: string, password: string) => Result;
-  signup: (input: { name: string; email: string; password: string; cityId: string }) => Result;
-  demoLogin: () => void;
+  login: (identifier: string, password: string) => Promise<Result>;
+  signup: (input: { name: string; email: string; password: string; cityId: string }) => Promise<Result>;
+  demoLogin: () => Promise<Result>;
   logout: () => void;
 
-  setCity: (cityId: string) => void;
+  setCity: (cityId: string) => Promise<void>;
   finishOnboarding: () => void;
 
-  createIncident: (input: NewIncidentInput) => Incident | null;
-  updateStatus: (incidentId: string, status: IncidentStatus) => void;
-  rateIncident: (incidentId: string, rating: number, comment: string) => void;
+  createIncident: (input: NewIncidentInput) => Promise<Incident | null>;
+  updateStatus: (incidentId: string, status: IncidentStatus, note?: string) => Promise<void>;
+  closeIncident: (incidentId: string) => Promise<void>;
+  rateIncident: (incidentId: string, rating: number, comment: string) => Promise<void>;
 
-  markAllNotificationsRead: () => void;
-  markNotificationRead: (id: string) => void;
+  markAllNotificationsRead: () => Promise<void>;
+  markNotificationRead: (id: string) => Promise<void>;
 
-  joinVolunteer: (skills: string[]) => void;
-  leaveVolunteer: () => void;
-  acceptAlert: (incidentId: string) => void;
-  toggleAlerts: () => void;
-  setAlertRadius: (km: number) => void;
-  togglePreferredCategory: (categoryId: CategoryId) => void;
-  updateProfile: (patch: Partial<Pick<User, "name" | "phone" | "cityId" | "sectorId">>) => void;
+  joinVolunteer: (skills: string[]) => Promise<void>;
+  leaveVolunteer: () => Promise<void>;
+  acceptAlert: (incidentId: string) => Promise<void>;
+  toggleAlerts: () => Promise<void>;
+  setAlertRadius: (km: number) => Promise<void>;
+  togglePreferredCategory: (categoryId: CategoryId) => Promise<void>;
+  updateProfile: (patch: Partial<Pick<User, "name" | "phone" | "cityId" | "sectorId">>) => Promise<void>;
   resetDemo: () => void;
 };
-
-function sectorForCity(sectors: Sector[], cityId: string, preferred = 9) {
-  return sectors.find((s) => s.cityId === cityId && s.name === `Sector ${preferred}`)
-    ?? sectors.find((s) => s.cityId === cityId)
-    ?? sectors[0];
-}
 
 export const useApp = create<AppState>()(
   persist(
     (set, get) => ({
-      cities: [],
+      cities: CITIES,
       sectors: [],
       users: [],
       incidents: [],
       notifications: [],
+      token: null,
       sessionUserId: null,
+      currentUser: null,
       activeCityId: "metro",
       onboarded: false,
       hydrated: false,
 
       setHydrated: () => set({ hydrated: true }),
 
-      bootstrap: () => {
-        const state = get();
-        if (state.sectors.length === 0 || state.users.length === 0) {
-          const seed = buildSeed();
+      bootstrap: async () => {
+        const seed = buildSeed();
+        if (get().sectors.length === 0) {
           set({
             cities: seed.cities,
             sectors: seed.sectors,
@@ -90,108 +108,167 @@ export const useApp = create<AppState>()(
             incidents: seed.incidents,
             notifications: seed.notifications,
           });
-          return;
         }
-        if (state.sessionUserId && !state.users.some((u) => u.id === state.sessionUserId)) {
-          set({ sessionUserId: null });
+        try {
+          const [cities, sectors, incidents, leaders] = await Promise.all([
+            apiListCities(),
+            apiListSectors(get().activeCityId || "metro"),
+            apiListIncidents({ limit: 200 }),
+            apiLeaderboard(),
+          ]);
+          set((s) => ({
+            cities: cities.length ? cities : s.cities,
+            sectors: sectors.length ? sectors : s.sectors,
+            incidents,
+            users: leaders.length ? leaders : s.users,
+          }));
+          const token = get().token;
+          if (token) {
+            try {
+              const me = await apiMe(token);
+              const notifs = await apiListNotifications(me.id, token);
+              set({ currentUser: me, sessionUserId: me.id, notifications: notifs });
+            } catch {
+              set({ token: null, currentUser: null, sessionUserId: null });
+            }
+          }
+        } catch {
+          // Backend unreachable; keep local seed data
         }
       },
 
-      login: (identifier, password) => {
-        const clean = identifier.trim().toLowerCase().replace(/\s+/g, "");
-        const user = get().users.find(
-          (u) =>
-            (u.email.toLowerCase() === clean ||
-              u.phone.replace(/\s+/g, "") === clean ||
-              u.phone.replace(/\s+/g, "").replace("+91", "") === clean.replace("+91", "")) &&
-            u.password === password,
-        );
-        if (!user) return { ok: false, error: "No account matches those details. Try the demo login." };
-        set({ sessionUserId: user.id, activeCityId: user.cityId });
-        return { ok: true };
-      },
-
-      signup: ({ name, email, password, cityId }) => {
-        const clean = email.trim().toLowerCase();
-        if (!name.trim()) return { ok: false, error: "Add your name to continue." };
-        if (!clean.includes("@")) return { ok: false, error: "Enter a valid email address." };
-        if (password.length < 6) return { ok: false, error: "Use at least 6 characters for your password." };
-        if (get().users.some((u) => u.email.toLowerCase() === clean)) {
-          return { ok: false, error: "An account with this email already exists. Sign in instead." };
+      refreshIncidents: async (cityId?: string) => {
+        try {
+          const incidents = await apiListIncidents({ cityId, limit: 200 });
+          set({ incidents });
+        } catch {
+          // ignore
         }
-        const sector = sectorForCity(get().sectors, cityId);
-        const user: User = {
-          id: `u_${uid("new")}`,
-          name: name.trim(),
-          email: clean,
-          phone: "",
-          password,
-          cityId,
-          sectorId: sector.id,
-          stars: 10,
-          helped: 0,
-          isVolunteer: false,
-          skills: [],
-          preferredCategories: ["road", "waste"],
-          alertsEnabled: true,
-          alertRadiusKm: 3,
-          role: "citizen",
-          createdAt: new Date().toISOString(),
-        };
-        set((state) => ({
-          users: [user, ...state.users],
-          sessionUserId: user.id,
-          activeCityId: cityId,
-          notifications: [
-            {
-              id: uid("n"),
-              userId: user.id,
-              type: "system",
-              title: "Welcome to Better Urban",
-              body: "You start with 10 stars. Report your first issue to activate your 3 km alert radius.",
-              createdAt: new Date().toISOString(),
-              read: false,
-            },
-            ...state.notifications,
-          ],
-        }));
-        return { ok: true };
       },
 
-      demoLogin: () => {
-        const state = get();
-        const demo = state.users.find((u) => u.id === DEMO_USER_ID) ?? state.users[0];
-        if (!demo) return;
-        set({ sessionUserId: demo.id, activeCityId: demo.cityId });
+      refreshNotifications: async () => {
+        const { token, currentUser } = get();
+        if (!token || !currentUser) return;
+        try {
+          const notifications = await apiListNotifications(currentUser.id, token);
+          set({ notifications });
+        } catch {
+          // ignore
+        }
       },
 
-      logout: () => set({ sessionUserId: null }),
+      login: async (identifier, password) => {
+        try {
+          const auth = await apiLogin(identifier.trim(), password);
+          const [sectors, notifications] = await Promise.all([
+            apiListSectors(auth.profile.cityId),
+            apiListNotifications(auth.profile.id, auth.idToken),
+          ]);
+          set({
+            token: auth.idToken,
+            sessionUserId: auth.profile.id,
+            currentUser: auth.profile,
+            activeCityId: auth.profile.cityId,
+            sectors: sectors.length ? sectors : get().sectors,
+            notifications,
+          });
+          return { ok: true };
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : "Invalid credentials" };
+        }
+      },
 
-      setCity: (cityId) => set({ activeCityId: cityId }),
+      signup: async ({ name, email, password, cityId }) => {
+        try {
+          const auth = await apiSignup({ name, email, password, cityId });
+          const [sectors, notifications] = await Promise.all([
+            apiListSectors(auth.profile.cityId),
+            apiListNotifications(auth.profile.id, auth.idToken),
+          ]);
+          set({
+            token: auth.idToken,
+            sessionUserId: auth.profile.id,
+            currentUser: auth.profile,
+            activeCityId: auth.profile.cityId,
+            sectors: sectors.length ? sectors : get().sectors,
+            notifications,
+          });
+          return { ok: true };
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : "Could not sign up" };
+        }
+      },
+
+      demoLogin: async () => {
+        try {
+          const auth = await apiDemoLogin();
+          const [sectors, notifications] = await Promise.all([
+            apiListSectors(auth.profile.cityId),
+            apiListNotifications(auth.profile.id, auth.idToken),
+          ]);
+          set({
+            token: auth.idToken,
+            sessionUserId: auth.profile.id,
+            currentUser: auth.profile,
+            activeCityId: auth.profile.cityId,
+            sectors: sectors.length ? sectors : get().sectors,
+            notifications,
+          });
+          return { ok: true };
+        } catch {
+          // offline fallback
+          const seed = buildSeed();
+          set({
+            sessionUserId: seed.users[0].id,
+            currentUser: seed.users[0],
+            activeCityId: seed.users[0].cityId,
+          });
+          return { ok: true };
+        }
+      },
+
+      logout: () => set({ token: null, sessionUserId: null, currentUser: null }),
+
+      setCity: async (cityId) => {
+        set({ activeCityId: cityId });
+        try {
+          const sectors = await apiListSectors(cityId);
+          set({ sectors });
+          const { token, currentUser } = get();
+          if (token && currentUser) {
+            const updated = await apiUpdateUser(currentUser.id, { cityId }, token);
+            set({ currentUser: updated });
+          }
+        } catch {
+          // ignore
+        }
+      },
+
       finishOnboarding: () => set({ onboarded: true }),
 
-      createIncident: (input) => {
-        const state = get();
-        const user = state.users.find((u) => u.id === state.sessionUserId);
-        if (!user) return null;
-        const city = cityById(state.activeCityId);
-        const audience = state.users.filter((u) => {
-          if (u.cityId !== city.id) return false;
-          const sector = state.sectors.find((s) => s.id === u.sectorId);
-          return sector ? haversineKm(sector, { lat: input.lat, lng: input.lng }) <= 3 : false;
-        }).length;
-
-        const usedCodes = new Set(state.incidents.map((i) => i.code));
-        let code = "";
-        do {
-          code = `BU-${2000 + Math.floor(Math.random() * 7000)}`;
-        } while (usedCodes.has(code));
+      createIncident: async (input) => {
+        const { token, currentUser, activeCityId } = get();
+        if (token) {
+          try {
+            const inc = await apiCreateIncident({ ...input, cityId: input.cityId ?? activeCityId }, token);
+            set((s) => ({
+              incidents: [inc, ...s.incidents],
+              currentUser: s.currentUser ? { ...s.currentUser, stars: s.currentUser.stars + 10 } : null,
+            }));
+            await get().refreshNotifications();
+            return inc;
+          } catch {
+            // fallback below if backend offline
+          }
+        }
+        const city = cityById(input.cityId ?? activeCityId);
         const now = new Date().toISOString();
-        const incident: Incident = {
-          id: `inc_${uid("user")}`,
-          code,
+        const inc: Incident = {
+          id: uid("inc"),
+          code: `OC-${Math.floor(2000 + Math.random() * 6999)}`,
           cityId: city.id,
           sectorId: input.sectorId,
+          wardNumber: input.wardNumber ?? 1,
           categoryId: input.categoryId,
           subCategoryId: input.subCategoryId,
           title: input.title,
@@ -200,307 +277,194 @@ export const useApp = create<AppState>()(
           lng: input.lng,
           landmark: input.landmark,
           photoUrl: input.photoUrl,
+          tags: input.tags ?? [],
           isAnonymous: input.isAnonymous,
-          reporterId: user.id,
-          reporterName: input.isAnonymous ? "Anonymous citizen" : user.name,
-          status: "dispatched",
+          reporterId: input.isAnonymous ? null : (currentUser?.id ?? null),
+          reporterName: input.isAnonymous ? "Anonymous citizen" : (currentUser?.name ?? "Citizen"),
+          status: "submitted",
+          mapColor: "RED",
           severity: input.severity,
           radiusKm: 3,
-          alertedCount: Math.max(audience, 1),
+          alertedCount: 10,
           notifiedOrgs: orgsForCity(city.name),
           notifiedNgos: DEMO_NGOS,
-          events: [
-            {
-              id: uid("ev"),
-              kind: "reported",
-              label: "Report received",
-              detail: "Citizen report logged on the 3 km dispatch network.",
-              at: now,
-            },
-            {
-              id: uid("ev"),
-              kind: "dispatch",
-              label: "Alert dispatched",
-              detail: `${city.name} control room, 2 partner NGOs and ${Math.max(audience, 1)} citizens inside 3 km were alerted.`,
-              at: now,
-            },
-          ],
+          events: [{ id: uid("ev"), kind: "submitted", label: "Submitted", detail: "Logged locally.", at: now }],
           helpedBy: [],
           createdAt: now,
           resolvedAt: null,
           rating: null,
           ratingComment: null,
         };
+        set((s) => ({ incidents: [inc, ...s.incidents] }));
+        return inc;
+      },
 
-        const notifications: AppNotification[] = [
-          {
-            id: uid("n"),
-            userId: user.id,
-            type: "status",
-            incidentId: incident.id,
-            title: `${code} · Alert dispatched`,
-            body: `${city.name} control room, 2 NGOs and ${Math.max(audience, 1)} neighbours have been alerted.`,
-            createdAt: now,
-            read: false,
-          },
-        ];
-
-        if (user.id !== DEMO_USER_ID) {
-          const demo = state.users.find((u) => u.id === DEMO_USER_ID);
-          if (demo) {
-            const demoIncidentSector = state.sectors.find((s) => s.id === demo.sectorId);
-            if (demo.cityId === city.id && demoIncidentSector && haversineKm(demoIncidentSector, input) <= 3) {
-              notifications.push({
-                id: uid("n"),
-                userId: demo.id,
-                type: "alert",
-                incidentId: incident.id,
-                title: `${incident.title} reported nearby`,
-                body: `${incident.landmark} · ${Math.round(haversineKm(demoIncidentSector, input) * 10) / 10} km from your sector.`,
-                createdAt: now,
-                read: false,
-              });
-            }
-          }
+      updateStatus: async (incidentId, status, note) => {
+        const { token } = get();
+        if (token) {
+          const updated = await apiUpdateIncidentStatus(incidentId, { status, note }, token);
+          set((s) => ({
+            incidents: s.incidents.map((i) => (i.id === incidentId ? updated : i)),
+          }));
+          return;
         }
-
-        set({
-          incidents: [incident, ...state.incidents],
-          notifications: [...notifications, ...state.notifications],
-          users: state.users.map((u) =>
-            u.id === user.id ? { ...u, stars: u.stars + 10 } : u,
+        set((s) => ({
+          incidents: s.incidents.map((i) =>
+            i.id === incidentId
+              ? { ...i, status, mapColor: mapColorForStatus(status) }
+              : i,
           ),
-        });
-
-        return incident;
+        }));
       },
 
-      updateStatus: (incidentId, status) => {
-        const state = get();
-        const incident = state.incidents.find((i) => i.id === incidentId);
-        if (!incident) return;
-        const now = new Date().toISOString();
-        const meta = STATUS_META[status];
-        const events = [
-          ...incident.events,
-          {
-            id: uid("ev"),
-            kind: "status" as const,
-            label: status === "resolved" ? "Marked resolved" : meta.label,
-            detail:
-              status === "resolved"
-                ? "Field team marked the issue resolved. Awaiting citizen confirmation."
-                : `Status updated by the ${cityById(incident.cityId).name} control room.`,
-            at: now,
-          },
-        ];
-        const notifications = [...state.notifications];
-        if (incident.reporterId) {
-          notifications.unshift({
-            id: uid("n"),
-            userId: incident.reporterId,
-            type: "status",
-            incidentId: incident.id,
-            title: `${incident.code} · ${meta.label}`,
-            body: `${incident.title} at ${incident.landmark} is now ${meta.short.toLowerCase()}.`,
-            createdAt: now,
-            read: false,
-          });
+      closeIncident: async (incidentId) => {
+        const { token } = get();
+        if (token) {
+          const updated = await apiCloseIncident(incidentId, token);
+          set((s) => ({
+            incidents: s.incidents.map((i) => (i.id === incidentId ? updated : i)),
+          }));
         }
-        set({
-          incidents: state.incidents.map((i) =>
-            i.id === incidentId
-              ? {
-                  ...i,
-                  status,
-                  resolvedAt: status === "resolved" ? now : i.resolvedAt,
-                  events,
-                }
+      },
+
+      rateIncident: async (incidentId, rating, comment) => {
+        const { token } = get();
+        if (token) {
+          await apiRateIncident(incidentId, rating, comment, token);
+        }
+        set((s) => ({
+          incidents: s.incidents.map((i) =>
+            i.id === incidentId ? { ...i, rating, ratingComment: comment } : i,
+          ),
+        }));
+      },
+
+      markAllNotificationsRead: async () => {
+        const { token, currentUser } = get();
+        if (token && currentUser) {
+          await apiMarkAllNotificationsRead(currentUser.id, token);
+        }
+        set((s) => ({ notifications: s.notifications.map((n) => ({ ...n, read: true })) }));
+      },
+
+      markNotificationRead: async (id) => {
+        const { token } = get();
+        if (token) {
+          await apiMarkNotificationRead(id, token);
+        }
+        set((s) => ({
+          notifications: s.notifications.map((n) => (n.id === id ? { ...n, read: true } : n)),
+        }));
+      },
+
+      joinVolunteer: async (skills) => {
+        const { token, currentUser } = get();
+        if (!currentUser) return;
+        if (token) {
+          const updated = await apiUpdateUser(currentUser.id, { isVolunteer: true, skills }, token);
+          set({ currentUser: updated });
+          return;
+        }
+        set({ currentUser: { ...currentUser, isVolunteer: true, skills } });
+      },
+
+      leaveVolunteer: async () => {
+        const { token, currentUser } = get();
+        if (!currentUser) return;
+        if (token) {
+          const updated = await apiUpdateUser(currentUser.id, { isVolunteer: false }, token);
+          set({ currentUser: updated });
+          return;
+        }
+        set({ currentUser: { ...currentUser, isVolunteer: false } });
+      },
+
+      acceptAlert: async (incidentId) => {
+        const { token, currentUser } = get();
+        if (!currentUser) return;
+        if (token) {
+          await apiHelpIncident(incidentId, token);
+        }
+        set((s) => ({
+          incidents: s.incidents.map((i) =>
+            i.id === incidentId && !i.helpedBy.includes(currentUser.id)
+              ? { ...i, helpedBy: [...i.helpedBy, currentUser.id] }
               : i,
           ),
-          notifications,
-        });
+        }));
       },
 
-      rateIncident: (incidentId, rating, comment) => {
-        const state = get();
-        const incident = state.incidents.find((i) => i.id === incidentId);
-        if (!incident) return;
-        const now = new Date().toISOString();
-        set({
-          incidents: state.incidents.map((i) =>
-            i.id === incidentId
-              ? {
-                  ...i,
-                  rating,
-                  ratingComment: comment,
-                  events: [
-                    ...i.events,
-                    {
-                      id: uid("ev"),
-                      kind: "feedback",
-                      label: `Citizen rated the fix ${rating}/5`,
-                      detail: comment || undefined,
-                      at: now,
-                    },
-                  ],
-                }
-              : i,
-          ),
-          users: state.users.map((u) =>
-            u.id === state.sessionUserId ? { ...u, stars: u.stars + 10 } : u,
-          ),
-        });
+      toggleAlerts: async () => {
+        const { token, currentUser } = get();
+        if (!currentUser) return;
+        const next = !currentUser.alertsEnabled;
+        if (token) {
+          const updated = await apiUpdateUser(currentUser.id, { alertsEnabled: next }, token);
+          set({ currentUser: updated });
+          return;
+        }
+        set({ currentUser: { ...currentUser, alertsEnabled: next } });
       },
 
-      markAllNotificationsRead: () =>
-        set((state) => ({
-          notifications: state.notifications.map((n) =>
-            n.userId === state.sessionUserId ? { ...n, read: true } : n,
-          ),
-        })),
-
-      markNotificationRead: (id) =>
-        set((state) => ({
-          notifications: state.notifications.map((n) =>
-            n.id === id ? { ...n, read: true } : n,
-          ),
-        })),
-
-      joinVolunteer: (skills) => {
-        const state = get();
-        const user = state.users.find((u) => u.id === state.sessionUserId);
-        if (!user) return;
-        const alreadyVolunteer = user.isVolunteer;
-        set({
-          users: state.users.map((u) =>
-            u.id === user.id
-              ? { ...u, isVolunteer: true, role: "volunteer", skills, stars: u.stars + (alreadyVolunteer ? 0 : 15) }
-              : u,
-          ),
-          notifications: alreadyVolunteer
-            ? state.notifications
-            : [
-                {
-                  id: uid("n"),
-                  userId: user.id,
-                  type: "volunteer",
-                  title: "Volunteer hub unlocked",
-                  body: "You are now a verified responder. Accept nearby alerts to earn stars.",
-                  createdAt: new Date().toISOString(),
-                  read: false,
-                },
-                ...state.notifications,
-              ],
-        });
+      setAlertRadius: async (km) => {
+        const { token, currentUser } = get();
+        if (!currentUser) return;
+        if (token) {
+          const updated = await apiUpdateUser(currentUser.id, { alertRadiusKm: km }, token);
+          set({ currentUser: updated });
+          return;
+        }
+        set({ currentUser: { ...currentUser, alertRadiusKm: km } });
       },
 
-      leaveVolunteer: () =>
-        set((state) => ({
-          users: state.users.map((u) =>
-            u.id === state.sessionUserId ? { ...u, isVolunteer: false, role: "citizen" } : u,
-          ),
-        })),
-
-      acceptAlert: (incidentId) => {
-        const state = get();
-        const user = state.users.find((u) => u.id === state.sessionUserId);
-        const incident = state.incidents.find((i) => i.id === incidentId);
-        if (!user || !incident || incident.helpedBy.includes(user.id)) return;
-        const now = new Date().toISOString();
-        set({
-          incidents: state.incidents.map((i) =>
-            i.id === incidentId
-              ? {
-                  ...i,
-                  helpedBy: [...i.helpedBy, user.id],
-                  events: [
-                    ...i.events,
-                    {
-                      id: uid("ev"),
-                      kind: "volunteer",
-                      label: `${user.name} joined as a nearby responder`,
-                      detail: "Volunteer accepted the alert and is heading to the location.",
-                      at: now,
-                    },
-                  ],
-                }
-              : i,
-          ),
-          users: state.users.map((u) =>
-            u.id === user.id ? { ...u, stars: u.stars + 25, helped: u.helped + 1 } : u,
-          ),
-          notifications: [
-            {
-              id: uid("n"),
-              userId: user.id,
-              type: "volunteer",
-              incidentId,
-              title: "You earned 25 stars",
-              body: `You accepted ${incident.code} at ${incident.landmark}. The reporter has been notified.`,
-              createdAt: now,
-              read: false,
-            },
-            ...state.notifications,
-          ],
-        });
+      togglePreferredCategory: async (categoryId) => {
+        const { token, currentUser } = get();
+        if (!currentUser) return;
+        const has = currentUser.preferredCategories.includes(categoryId);
+        const next = has
+          ? currentUser.preferredCategories.filter((c) => c !== categoryId)
+          : [...currentUser.preferredCategories, categoryId];
+        if (token) {
+          const updated = await apiUpdateUser(currentUser.id, { preferredCategories: next }, token);
+          set({ currentUser: updated });
+          return;
+        }
+        set({ currentUser: { ...currentUser, preferredCategories: next } });
       },
 
-      toggleAlerts: () =>
-        set((state) => ({
-          users: state.users.map((u) =>
-            u.id === state.sessionUserId ? { ...u, alertsEnabled: !u.alertsEnabled } : u,
-          ),
-        })),
-
-      setAlertRadius: (km) =>
-        set((state) => ({
-          users: state.users.map((u) =>
-            u.id === state.sessionUserId ? { ...u, alertRadiusKm: km } : u,
-          ),
-        })),
-
-      togglePreferredCategory: (categoryId) =>
-        set((state) => ({
-          users: state.users.map((u) => {
-            if (u.id !== state.sessionUserId) return u;
-            const has = u.preferredCategories.includes(categoryId);
-            return {
-              ...u,
-              preferredCategories: has
-                ? u.preferredCategories.filter((c) => c !== categoryId)
-                : [...u.preferredCategories, categoryId],
-            };
-          }),
-        })),
-
-      updateProfile: (patch) =>
-        set((state) => ({
-          users: state.users.map((u) => (u.id === state.sessionUserId ? { ...u, ...patch } : u)),
-        })),
+      updateProfile: async (patch) => {
+        const { token, currentUser } = get();
+        if (!currentUser) return;
+        if (token) {
+          const updated = await apiUpdateUser(currentUser.id, patch, token);
+          set({ currentUser: updated });
+          return;
+        }
+        set({ currentUser: { ...currentUser, ...patch } });
+      },
 
       resetDemo: () => {
         const seed = buildSeed();
         set({
-          ...seed,
+          cities: seed.cities,
+          sectors: seed.sectors,
+          users: seed.users,
+          incidents: seed.incidents,
+          notifications: seed.notifications,
+          token: null,
           sessionUserId: null,
+          currentUser: null,
           activeCityId: "metro",
-          onboarded: false,
-          hydrated: true,
         });
       },
     }),
     {
-      name: "betterurban.db.v1",
-      skipHydration: true,
+      name: "ocor-civic-store-v1",
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
-        cities: state.cities,
-        sectors: state.sectors,
-        users: state.users,
-        incidents: state.incidents,
-        notifications: state.notifications,
+        token: state.token,
         sessionUserId: state.sessionUserId,
+        currentUser: state.currentUser,
         activeCityId: state.activeCityId,
         onboarded: state.onboarded,
       }),
@@ -511,19 +475,20 @@ export const useApp = create<AppState>()(
   ),
 );
 
-export function useSessionUser() {
-  return useApp((state) => state.users.find((u) => u.id === state.sessionUserId) ?? null);
+export function useCurrentUser(): User | null {
+  return useApp((s) => s.currentUser);
 }
 
-export function useCityIncidents() {
-  return useApp((state) => state.incidents.filter((i) => i.cityId === state.activeCityId));
+export function useSessionUser(): User | null {
+  return useApp((s) => s.currentUser);
 }
 
-export function useUnreadCount() {
-  return useApp(
-    (state) =>
-      state.notifications.filter((n) => n.userId === state.sessionUserId && !n.read).length,
-  );
+export function useUnreadCount(): number {
+  return useApp((s) => {
+    const uid = s.currentUser?.id;
+    if (!uid) return 0;
+    return s.notifications.filter((n) => n.userId === uid && !n.read).length;
+  });
 }
 
-export const DEMO_CREDENTIALS = { email: "demo@betterurban.app", password: DEMO_PASSWORD };
+export const STATUS_LABELS = STATUS_META;

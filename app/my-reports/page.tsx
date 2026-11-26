@@ -3,121 +3,125 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileText, Plus } from "lucide-react";
+import { FileText, Search } from "lucide-react";
 import { AppFrame, HydrationGate } from "@/components/app-frame";
-import { Button, Chip, EmptyState, NotificationButton, PageHeader } from "@/components/ui";
 import { IncidentCard } from "@/components/incident-card";
-import { useApp, useSessionUser, useUnreadCount } from "@/lib/store";
-
-type Filter = "all" | "open" | "resolved";
+import { Button, EmptyState, PageHeader, Select, TextInput } from "@/components/ui";
+import { CATEGORIES, STATUS_FLOW, STATUS_META } from "@/lib/catalog";
+import { useApp, useSessionUser } from "@/lib/store";
 
 function MyReportsScreen() {
   const router = useRouter();
   const user = useSessionUser();
-  const unread = useUnreadCount();
   const incidents = useApp((s) => s.incidents);
-  const [filter, setFilter] = useState<Filter>("all");
+  const cities = useApp((s) => s.cities);
+
+  const [search, setSearch] = useState("");
+  const [cityFilter, setCityFilter] = useState("all");
+  const [catFilter, setCatFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   useEffect(() => {
     if (!user) router.replace("/auth");
   }, [user, router]);
 
-  const mine = useMemo(
-    () =>
-      incidents
-        .filter((incident) => incident.reporterId === user?.id)
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-    [incidents, user?.id],
-  );
-
-  const filtered = mine.filter((incident) => {
-    if (filter === "open") return incident.status !== "resolved";
-    if (filter === "resolved") return incident.status === "resolved";
-    return true;
-  });
+  const myReports = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return incidents.filter((inc) => {
+      if (inc.reporterId !== user?.id) return false;
+      if (cityFilter !== "all" && inc.cityId !== cityFilter) return false;
+      if (catFilter !== "all" && inc.categoryId !== catFilter) return false;
+      if (statusFilter !== "all" && inc.status !== statusFilter) return false;
+      if (
+        q &&
+        !inc.title.toLowerCase().includes(q) &&
+        !inc.code.toLowerCase().includes(q) &&
+        !inc.landmark.toLowerCase().includes(q)
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [incidents, user?.id, cityFilter, catFilter, statusFilter, search]);
 
   if (!user) return null;
 
-  const open = mine.filter((i) => i.status !== "resolved").length;
-  const resolved = mine.filter((i) => i.status === "resolved").length;
-
   return (
-    <div className="pb-6">
+    <AppFrame>
       <PageHeader
-        label="WF-10 // My reports"
-        title="My complaints"
-        subtitle={`${mine.length} tickets filed from your account`}
         back="/app"
-        right={<NotificationButton count={unread} />}
+        label="Citizen History"
+        title="My Complaints"
+        subtitle={`${myReports.length} matching report(s)`}
       />
 
-      <div className="space-y-3.5 px-5 pt-4">
+      <div className="space-y-3 px-5 pb-8 pt-4">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+          <TextInput
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by code, title, landmark…"
+            className="pl-9"
+          />
+        </div>
+
         <div className="grid grid-cols-3 gap-2">
-          {[
-            { label: "Filed", value: mine.length },
-            { label: "Open", value: open },
-            { label: "Resolved", value: resolved },
-          ].map((stat) => (
-            <div key={stat.label} className="rounded-xl border border-line bg-white px-3 py-2.5">
-              <p className="font-display text-[18px] font-semibold leading-none">{stat.value}</p>
-              <p className="mt-1 text-[10px] uppercase tracking-[0.1em] text-muted">{stat.label}</p>
-            </div>
-          ))}
+          <Select value={cityFilter} onChange={(e) => setCityFilter(e.target.value)} aria-label="Filter by city">
+            <option value="all">All Cities</option>
+            {cities.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.short}
+              </option>
+            ))}
+          </Select>
+
+          <Select value={catFilter} onChange={(e) => setCatFilter(e.target.value)} aria-label="Filter by category">
+            <option value="all">All Types</option>
+            {CATEGORIES.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+
+          <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} aria-label="Filter by status">
+            <option value="all">All Status</option>
+            {STATUS_FLOW.map((st) => (
+              <option key={st} value={st}>
+                {STATUS_META[st].short}
+              </option>
+            ))}
+          </Select>
         </div>
 
-        <div className="flex gap-2">
-          {([
-            ["all", "All"],
-            ["open", "Open"],
-            ["resolved", "Resolved"],
-          ] as Array<[Filter, string]>).map(([value, label]) => (
-            <Chip key={value} active={filter === value} onClick={() => setFilter(value)}>
-              {label}
-            </Chip>
-          ))}
-        </div>
-
-        {filtered.length === 0 ? (
+        {myReports.length === 0 ? (
           <EmptyState
-            icon={<FileText className="size-6" />}
-            title={mine.length === 0 ? "No complaints yet" : "Nothing in this filter"}
-            body={
-              mine.length === 0
-                ? "Your first report takes about 20 seconds. Pick a category, add a photo, and the 3 km network does the rest."
-                : "Try a different filter to see your other tickets."
-            }
+            icon={<FileText className="size-8" />}
+            title="No complaints match"
+            body="Report an issue or adjust your filters to see your submitted reports."
             action={
-              mine.length === 0 ? (
-                <Link href="/report/road">
-                  <Button size="sm">
-                    <Plus className="size-3.5" /> Report an issue
-                  </Button>
-                </Link>
-              ) : null
+              <Link href="/report/road">
+                <Button size="sm">Report an Issue</Button>
+              </Link>
             }
           />
         ) : (
           <div className="space-y-2.5">
-            {filtered.map((incident) => (
-              <IncidentCard key={incident.id} incident={incident} showAlerted />
+            {myReports.map((inc) => (
+              <IncidentCard key={inc.id} incident={inc} />
             ))}
           </div>
         )}
-
-        <p className="pt-2 text-center text-[9.5px] uppercase tracking-[0.16em] text-muted/70">
-          Status updates arrive as in-app notifications
-        </p>
       </div>
-    </div>
+    </AppFrame>
   );
 }
 
 export default function MyReportsPage() {
   return (
     <HydrationGate>
-      <AppFrame>
-        <MyReportsScreen />
-      </AppFrame>
+      <MyReportsScreen />
     </HydrationGate>
   );
 }

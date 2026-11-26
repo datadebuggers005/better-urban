@@ -1,4 +1,5 @@
-"""Static seed data for cities and sectors (mirrors frontend lib/catalog.ts + lib/seed.ts)."""
+"""Static seed data for cities, wards/sectors, categories, status metadata, and data sources."""
+import math
 from typing import List, Dict
 
 CITIES = [
@@ -10,70 +11,146 @@ CITIES = [
 ]
 
 SECTORS: List[Dict] = []
-# Generate 20 sectors per city around the center (deterministic-ish grid).
-import math
-
 for city in CITIES:
     lat0, lng0 = city["center"]["lat"], city["center"]["lng"]
     for i in range(1, 21):
-        # spiral-ish placement
         angle = (i / 20) * 2 * math.pi
         radius = 0.02 + (i % 5) * 0.008
         SECTORS.append({
             "id": f"{city['id']}-s{i}",
             "cityId": city["id"],
-            "name": f"Sector {i}",
+            "name": f"Ward {i} · Sector {i}",
+            "wardNumber": i,
             "lat": round(lat0 + radius * math.cos(angle), 6),
             "lng": round(lng0 + radius * math.sin(angle), 6),
         })
 
 CATEGORIES = [
-    {"id": "road", "name": "Road & Traffic", "short": "Road", "blurb": "Jam, potholes, signals", "accent": "#E3A33C"},
-    {"id": "fire", "name": "Fire & Disaster", "short": "Fire", "blurb": "Fire, flood, gas leak", "accent": "#C2543A"},
-    {"id": "medical", "name": "Medical Emergency", "short": "Medical", "blurb": "Accident, injury, aid", "accent": "#C0392B"},
-    {"id": "drainage", "name": "Sewage & Drainage", "short": "Drainage", "blurb": "Overflow, blocked drain", "accent": "#7A6C4F"},
-    {"id": "water", "name": "Water Issue", "short": "Water", "blurb": "Pipe leak, no supply", "accent": "#3E7C8C"},
-    {"id": "waste", "name": "Waste & Sanitation", "short": "Waste", "blurb": "Garbage dump, cleaning", "accent": "#6B8E4E"},
-    {"id": "safety", "name": "Women Safety", "short": "Safety", "blurb": "SOS alert, unsafe zone", "accent": "#8E5A8E"},
-    {"id": "other", "name": "Others", "short": "Other", "blurb": "Other urban problems", "accent": "#5B6B85"},
+    {"id": "road", "name": "Road", "short": "Road", "blurb": "Potholes, damaged road, traffic", "accent": "#1976d2"},
+    {"id": "water", "name": "Water", "short": "Water", "blurb": "Pipe leak, no supply, quality", "accent": "#4fb3e8"},
+    {"id": "garbage", "name": "Garbage", "short": "Garbage", "blurb": "Garbage dump, missed pickup", "accent": "#3dbe8b"},
+    {"id": "drainage", "name": "Drainage", "short": "Drainage", "blurb": "Blocked drain, overflow, manhole", "accent": "#f5a623"},
+    {"id": "streetlight", "name": "Streetlight", "short": "Streetlight", "blurb": "Dark street, faulty pole", "accent": "#e5484d"},
 ]
 
+CATEGORY_ALIASES = {
+    "waste": "garbage",
+    "fire": "road",
+    "medical": "road",
+    "safety": "streetlight",
+    "other": "road",
+}
+
+
+def normalize_category_id(category_id: str) -> str:
+    cid = (category_id or "road").strip().lower()
+    if cid in {c["id"] for c in CATEGORIES}:
+        return cid
+    return CATEGORY_ALIASES.get(cid, "road")
+
+
 SUB_CATEGORIES = [
-    {"id": "road-jam", "categoryId": "road", "name": "Roadblock / Traffic Jam"},
     {"id": "road-pothole", "categoryId": "road", "name": "Potholes / Damaged Road"},
-    {"id": "road-accident", "categoryId": "road", "name": "Road Accident"},
-    {"id": "road-signal", "categoryId": "road", "name": "Faulty Traffic Signal / Streetlight"},
-    {"id": "fire-fire", "categoryId": "fire", "name": "Fire / Smoke"},
-    {"id": "fire-flood", "categoryId": "fire", "name": "Waterlogging / Flood"},
-    {"id": "fire-gas", "categoryId": "fire", "name": "Gas Leak"},
-    {"id": "fire-collapse", "categoryId": "fire", "name": "Building / Wall Collapse"},
-    {"id": "medical-injury", "categoryId": "medical", "name": "Accident / Injury"},
-    {"id": "medical-emergency", "categoryId": "medical", "name": "Medical Emergency"},
-    {"id": "medical-animal", "categoryId": "medical", "name": "Stray Animal Attack"},
-    {"id": "drain-overflow", "categoryId": "drainage", "name": "Overflow / Blocked Drain"},
-    {"id": "drain-manhole", "categoryId": "drainage", "name": "Open Manhole"},
-    {"id": "drain-leak", "categoryId": "drainage", "name": "Sewage Leak"},
+    {"id": "road-jam", "categoryId": "road", "name": "Roadblock / Traffic Jam"},
+    {"id": "road-accident", "categoryId": "road", "name": "Road Hazard / Damaged Divider"},
     {"id": "water-leak", "categoryId": "water", "name": "Pipe Leak / Burst"},
     {"id": "water-supply", "categoryId": "water", "name": "No Water Supply"},
     {"id": "water-quality", "categoryId": "water", "name": "Contaminated Water"},
-    {"id": "waste-dump", "categoryId": "waste", "name": "Garbage Dump"},
-    {"id": "waste-collection", "categoryId": "waste", "name": "Missed Collection"},
-    {"id": "waste-toilet", "categoryId": "waste", "name": "Public Toilet Issue"},
-    {"id": "safety-sos", "categoryId": "safety", "name": "SOS / Unsafe Zone"},
-    {"id": "safety-harassment", "categoryId": "safety", "name": "Harassment"},
-    {"id": "safety-lighting", "categoryId": "safety", "name": "Poor Street Lighting"},
-    {"id": "other-noise", "categoryId": "other", "name": "Noise Pollution"},
-    {"id": "other-construction", "categoryId": "other", "name": "Illegal Construction"},
-    {"id": "other-civic", "categoryId": "other", "name": "Other Civic Problem"},
+    {"id": "garbage-dump", "categoryId": "garbage", "name": "Garbage Dump"},
+    {"id": "garbage-collection", "categoryId": "garbage", "name": "Missed Collection"},
+    {"id": "garbage-bin", "categoryId": "garbage", "name": "Overflowing Public Bin"},
+    {"id": "drainage-overflow", "categoryId": "drainage", "name": "Overflow / Blocked Drain"},
+    {"id": "drainage-manhole", "categoryId": "drainage", "name": "Open Manhole"},
+    {"id": "drainage-leak", "categoryId": "drainage", "name": "Sewage Leak"},
+    {"id": "streetlight-outage", "categoryId": "streetlight", "name": "Streetlight Not Working"},
+    {"id": "streetlight-flicker", "categoryId": "streetlight", "name": "Flickering / Exposed Pole"},
+    {"id": "streetlight-dark", "categoryId": "streetlight", "name": "Dark / Unsafe Stretch"},
 ]
 
-DEMO_NGOS = ["Civic Response Collective", "Green Hands Foundation"]
+STATUS_ORDER = [
+    "submitted",
+    "under_review",
+    "verified",
+    "assigned",
+    "in_progress",
+    "resolved",
+    "closed",
+]
 
+STATUS_META = {
+    "submitted": {"label": "Submitted", "short": "Submitted", "step": 0, "mapColor": "RED"},
+    "under_review": {"label": "Under Review", "short": "Under Review", "step": 1, "mapColor": "RED"},
+    "verified": {"label": "Verified", "short": "Verified", "step": 2, "mapColor": "RED"},
+    "assigned": {"label": "Assigned", "short": "Assigned", "step": 3, "mapColor": "YELLOW"},
+    "in_progress": {"label": "In Progress", "short": "In Progress", "step": 4, "mapColor": "YELLOW"},
+    "resolved": {"label": "Resolved", "short": "Resolved", "step": 5, "mapColor": "GREEN"},
+    "closed": {"label": "Closed", "short": "Closed", "step": 6, "mapColor": "GREEN"},
+}
+
+LEGACY_STATUS_MAP = {
+    "reported": "submitted",
+    "dispatched": "under_review",
+    "acknowledged": "verified",
+}
+
+
+def normalize_status(status: str) -> str:
+    s = (status or "submitted").strip().lower()
+    if s in STATUS_META:
+        return s
+    return LEGACY_STATUS_MAP.get(s, "submitted")
+
+
+def map_color_for_status(status: str) -> str:
+    norm = normalize_status(status)
+    return STATUS_META[norm]["mapColor"]
+
+
+DEMO_NGOS = ["Civic Response Collective", "Green Hands Foundation"]
 VOLUNTEER_SKILLS = ["Traffic Support", "First Aid", "Relief & Rescue"]
+
+DATA_SOURCES = [
+    {
+        "id": "src-municipal-wards",
+        "name": "Municipal Ward & Sector Boundaries",
+        "source": "OCOR Civic Geo Registry (5 Cities, 100 Wards)",
+        "category": "Geospatial",
+        "refreshCycle": "Quarterly",
+        "lastUpdated": "2026-11-20T00:00:00Z",
+        "status": "active",
+    },
+    {
+        "id": "src-citizen-reports",
+        "name": "OCOR Citizen Complaint Stream",
+        "source": "OCOR Local SQLite / Firestore Incidents",
+        "category": "Crowdsourced Civic Reports",
+        "refreshCycle": "Real-time",
+        "lastUpdated": "2026-11-26T00:00:00Z",
+        "status": "active",
+    },
+    {
+        "id": "src-nominatim-osm",
+        "name": "OpenStreetMap Nominatim Geocoder",
+        "source": "OpenStreetMap Foundation",
+        "category": "Reverse Geocoding",
+        "refreshCycle": "On-demand",
+        "lastUpdated": "2026-11-26T00:00:00Z",
+        "status": "active",
+    },
+    {
+        "id": "src-vision-triage",
+        "name": "OCOR Photo Auto-Tagger & EXIF Extractor",
+        "source": "Local PIL EXIF + HuggingFace / Google Vision",
+        "category": "Media Triage",
+        "refreshCycle": "On-upload",
+        "lastUpdated": "2026-11-26T00:00:00Z",
+        "status": "active",
+    },
+]
 
 
 def orgs_for_city(city_name: str):
-    return [f"{city_name} Municipal Control Room", f"{city_name} Traffic Police"]
+    return [f"{city_name} Municipal Control Room", f"{city_name} Public Works Dept"]
 
 
 def sectors_for_city(city_id: str):
@@ -82,3 +159,16 @@ def sectors_for_city(city_id: str):
 
 def city_by_id(city_id: str):
     return next((c for c in CITIES if c["id"] == city_id), CITIES[0])
+
+
+def ward_for_sector(sector_id: str) -> int:
+    sec = next((s for s in SECTORS if s["id"] == sector_id), None)
+    if sec:
+        return int(sec["wardNumber"])
+    # fallback parse e.g. metro-s18 -> 18
+    if sector_id and "-s" in sector_id:
+        try:
+            return int(sector_id.split("-s")[-1])
+        except ValueError:
+            pass
+    return 1

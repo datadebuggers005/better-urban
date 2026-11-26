@@ -11,7 +11,7 @@ async def analyze(file: UploadFile = File(...), user=Depends(get_current_user)):
     if not data:
         from fastapi import HTTPException
         raise HTTPException(400, "Empty file")
-    result = await analyze_image(data)
+    result = await analyze_image(data, filename=file.filename or "")
     result["filename"] = file.filename
     result["size"] = len(data)
     return result
@@ -24,7 +24,7 @@ async def analyze_public(file: UploadFile = File(...)):
     if not data:
         from fastapi import HTTPException
         raise HTTPException(400, "Empty file")
-    result = await analyze_image(data)
+    result = await analyze_image(data, filename=file.filename or "")
     result["filename"] = file.filename
     result["size"] = len(data)
     return result

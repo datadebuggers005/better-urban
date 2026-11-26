@@ -3,8 +3,8 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    app_name: str = "Better Urban API"
-    app_version: str = "0.1.0"
+    app_name: str = "OCOR API"
+    app_version: str = "1.0.0"
     debug: bool = False
 
     # Firebase
@@ -19,7 +19,9 @@ class Settings(BaseSettings):
 
     # Database backend: "local" (SQLite) or "firebase"
     db_backend: str = "local"
-    database_url: str = "sqlite:///./betterurban.db"
+    database_url: str = "sqlite:///./ocor.db"
+    upload_dir: str = "./uploads"
+    ollama_host: str = "http://127.0.0.1:8081"
 
     class Config:
         env_file = ".env"

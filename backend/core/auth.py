@@ -1,8 +1,30 @@
+import hashlib
+import hmac
+import os
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from core.firebase import get_auth, get_db
+from core.firebase import get_db
 
 bearer = HTTPBearer(auto_error=False)
+
+
+def hash_password(password: str) -> str:
+    salt = os.urandom(16).hex()
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100_000).hex()
+    return f"pbkdf2${salt}${dk}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    if not stored:
+        return False
+    if stored.startswith("pbkdf2$"):
+        parts = stored.split("$")
+        if len(parts) != 3:
+            return False
+        _, salt, expected = parts
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100_000).hex()
+        return hmac.compare_digest(dk, expected)
+    return hmac.compare_digest(password, stored)
 
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(bearer)):
@@ -28,7 +50,6 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(b
     uid = decoded.get("uid")
     if not uid:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has no uid")
-    from core.firebase import get_db
     db = get_db()
     snap = db.collection("users").document(uid).get()
     profile = snap.to_dict() if snap.exists else None
@@ -44,7 +65,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(b
             "helped": 0,
             "isVolunteer": False,
             "skills": [],
-            "preferredCategories": ["road", "waste"],
+            "preferredCategories": ["road", "garbage"],
             "alertsEnabled": True,
             "alertRadiusKm": 3,
             "role": "citizen",
@@ -55,7 +76,18 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(b
     return profile
 
 
-async def require_admin(user=Depends(get_current_user)):
-    if user.get("role") != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin role required")
-    return user
+def require_roles(*allowed_roles: str):
+    async def _guard(user=Depends(get_current_user)):
+        role = user.get("role", "citizen")
+        if role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Requires role in {', '.join(allowed_roles)}",
+            )
+        return user
+
+    return _guard
+
+
+require_admin = require_roles("admin")
+require_officer_or_admin = require_roles("officer", "admin")

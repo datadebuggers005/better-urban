@@ -1,25 +1,23 @@
 import random
-import string
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query
-from core.auth import get_current_user
+from core.auth import get_current_user, require_officer_or_admin
 from core.firebase import get_db
-from core.config import get_settings
 from db.store import is_local, get_store
-from models.schemas import IncidentCreate, StatusUpdate, RatingInput
-from services.seed_data import CITIES, SECTORS, orgs_for_city, DEMO_NGOS
+from models.schemas import IncidentCreate, StatusUpdate, RatingInput, DuplicateCheckRequest
+from services.duplicates import find_duplicates
+from services.seed_data import (
+    CITIES,
+    STATUS_META,
+    DEMO_NGOS,
+    orgs_for_city,
+    normalize_category_id,
+    normalize_status,
+    ward_for_sector,
+)
 from utils.geo import haversine_km
 
 router = APIRouter()
-
-
-STATUS_META = {
-    "reported": {"label": "Reported", "short": "Reported", "step": 0},
-    "dispatched": {"label": "Alert dispatched", "short": "Dispatched", "step": 1},
-    "acknowledged": {"label": "Authority acknowledged", "short": "Acknowledged", "step": 2},
-    "in_progress": {"label": "Work in progress", "short": "In progress", "step": 3},
-    "resolved": {"label": "Resolved", "short": "Resolved", "step": 4},
-}
 
 
 def _city(city_id):
@@ -30,19 +28,43 @@ def _uid(prefix="id"):
     return f"{prefix}_{''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=8))}"
 
 
-@router.get("/incidents")
-def list_incidents(cityId: str = Query(None), status: str = Query(None),
-                   reporterId: str = Query(None), limit: int = Query(100)):
+@router.post("/incidents/check-duplicate")
+def check_duplicate(body: DuplicateCheckRequest):
     if is_local():
         store = get_store()
-        items = store.list_incidents(city_id=cityId, status=status, reporter_id=reporterId, limit=limit)
-        return items
+        incidents = store.list_incidents(city_id=body.cityId, limit=500)
+        matches = find_duplicates(incidents, body.lat, body.lng, body.categoryId, city_id=body.cityId)
+        return {"hasDuplicates": len(matches) > 0, "matches": matches}
+    return {"hasDuplicates": False, "matches": []}
+
+
+@router.get("/incidents")
+def list_incidents(
+    cityId: str = Query(None),
+    categoryId: str = Query(None),
+    status: str = Query(None),
+    wardNumber: int = Query(None),
+    search: str = Query(None),
+    reporterId: str = Query(None),
+    limit: int = Query(100),
+):
+    if is_local():
+        store = get_store()
+        return store.list_incidents(
+            city_id=cityId,
+            category_id=categoryId,
+            status=status,
+            ward_number=wardNumber,
+            search=search,
+            reporter_id=reporterId,
+            limit=limit,
+        )
     db = get_db()
     q = db.collection("incidents")
     if cityId:
         q = q.where("cityId", "==", cityId)
     if status:
-        q = q.where("status", "==", status)
+        q = q.where("status", "==", normalize_status(status))
     if reporterId:
         q = q.where("reporterId", "==", reporterId)
     docs = q.limit(limit).stream()
@@ -60,13 +82,11 @@ def get_incident(incident_id: str):
         store = get_store()
         inc = store.get_incident(incident_id)
         if not inc:
-            from fastapi import HTTPException
             raise HTTPException(404, "Incident not found")
         return inc
     db = get_db()
     snap = db.collection("incidents").document(incident_id).get()
     if not snap.exists:
-        from fastapi import HTTPException
         raise HTTPException(404, "Incident not found")
     data = snap.to_dict()
     data["id"] = snap.id
@@ -77,12 +97,12 @@ def get_incident(incident_id: str):
 def create_incident(body: IncidentCreate, user=Depends(get_current_user)):
     if is_local():
         store = get_store()
-        data = body.dict()
+        data = body.model_dump()
         data["title"] = body.title or body.subCategoryId
         return store.create_incident(data, user)
-    # firebase path (original)
+
     db = get_db()
-    city = _city(user.get("cityId", "metro"))
+    city = _city(body.cityId or user.get("cityId", "metro"))
     point = {"lat": body.lat, "lng": body.lng}
     audience = 0
     for u in db.collection("users").where("cityId", "==", city["id"]).stream():
@@ -95,94 +115,125 @@ def create_incident(body: IncidentCreate, user=Depends(get_current_user)):
     used = {d.to_dict().get("code") for d in db.collection("incidents").stream()}
     code = None
     while code is None or code in used:
-        code = f"BU-{__import__('random').randint(2000, 8999)}"
+        code = f"OC-{random.randint(2000, 8999)}"
     now = datetime.now(timezone.utc).isoformat()
+    ward_num = body.wardNumber or ward_for_sector(body.sectorId)
     incident = {
-        "code": code, "cityId": city["id"], "sectorId": body.sectorId,
-        "categoryId": body.categoryId, "subCategoryId": body.subCategoryId,
-        "title": body.title, "note": body.note, "lat": body.lat, "lng": body.lng,
-        "landmark": body.landmark, "photoUrl": body.photoUrl, "isAnonymous": body.isAnonymous,
+        "code": code,
+        "cityId": city["id"],
+        "sectorId": body.sectorId,
+        "wardNumber": ward_num,
+        "categoryId": normalize_category_id(body.categoryId),
+        "subCategoryId": body.subCategoryId,
+        "title": body.title,
+        "note": body.note,
+        "lat": body.lat,
+        "lng": body.lng,
+        "landmark": body.landmark,
+        "photoUrl": body.photoUrl,
+        "tags": body.tags,
+        "isAnonymous": body.isAnonymous,
         "reporterId": None if body.isAnonymous else user["id"],
         "reporterName": "Anonymous citizen" if body.isAnonymous else user["name"],
-        "status": "dispatched", "severity": body.severity, "radiusKm": 3.0,
-        "alertedCount": audience, "notifiedOrgs": orgs_for_city(city["name"]),
+        "status": "submitted",
+        "mapColor": "RED",
+        "severity": body.severity,
+        "radiusKm": 3.0,
+        "alertedCount": audience,
+        "notifiedOrgs": orgs_for_city(city["name"]),
         "notifiedNgos": DEMO_NGOS,
-        "events": [], "helpedBy": [], "createdAt": now, "resolvedAt": None,
-        "rating": None, "ratingComment": None,
+        "events": [],
+        "helpedBy": [],
+        "createdAt": now,
+        "resolvedAt": None,
+        "closedAt": None,
+        "rating": None,
+        "ratingComment": None,
     }
     ref = db.collection("incidents").add(incident)
     incident["id"] = ref[1].id
-    if not body.isAnonymous:
-        db.collection("notifications").add({
-            "userId": user["id"], "type": "status", "incidentId": incident["id"],
-            "title": f"{code} · Alert dispatched",
-            "body": f"{city['name']} control room, 2 NGOs and {audience} neighbours have been alerted.",
-            "createdAt": now, "read": False,
-        })
-    db.collection("users").document(user["id"]).update({"stars": user.get("stars", 0) + 10})
     return incident
 
 
 @router.patch("/incidents/{incident_id}/status")
-def update_status(incident_id: str, body: StatusUpdate, user=Depends(get_current_user)):
+def update_status(incident_id: str, body: StatusUpdate, user=Depends(require_officer_or_admin)):
     if is_local():
         store = get_store()
-        inc = store.update_status(incident_id, body.status)
+        inc = store.update_status(
+            incident_id,
+            body.status,
+            actor=user,
+            note=body.note,
+            assigned_to=body.assignedTo,
+            assigned_to_name=body.assignedToName,
+        )
         if not inc:
-            from fastapi import HTTPException
             raise HTTPException(404, "Incident not found")
         return inc
+
     db = get_db()
     ref = db.collection("incidents").document(incident_id)
     snap = ref.get()
     if not snap.exists:
-        from fastapi import HTTPException
         raise HTTPException(404, "Incident not found")
     inc = snap.to_dict()
     now = datetime.now(timezone.utc).isoformat()
-    meta = STATUS_META.get(body.status, STATUS_META["reported"])
+    norm = normalize_status(body.status)
+    meta = STATUS_META[norm]
     events = list(inc.get("events", [])) + [{
-        "id": _uid("ev"), "kind": "status",
-        "label": "Marked resolved" if body.status == "resolved" else meta["label"],
-        "detail": ("Field team marked the issue resolved. Awaiting citizen confirmation."
-                   if body.status == "resolved"
-                   else f"Status updated by the {_city(inc['cityId'])['name']} control room."),
+        "id": _uid("ev"),
+        "kind": "status",
+        "label": meta["label"],
+        "detail": body.note or f"Status updated to {meta['label']} by {user.get('name', 'Officer')}.",
         "at": now,
     }]
-    updates = {"status": body.status, "events": events}
-    if body.status == "resolved":
+    updates = {"status": norm, "events": events}
+    if norm == "resolved":
         updates["resolvedAt"] = now
+    if norm == "closed":
+        updates["closedAt"] = now
     ref.update(updates)
-    if inc.get("reporterId"):
-        db.collection("notifications").add({
-            "userId": inc["reporterId"], "type": "status", "incidentId": incident_id,
-            "title": f"{inc['code']} · {meta['label']}",
-            "body": f"{inc['title']} at {inc.get('landmark','')} is now {meta['short'].lower()}.",
-            "createdAt": now, "read": False,
-        })
     inc.update(updates)
     inc["id"] = incident_id
     return inc
+
+
+@router.post("/incidents/{incident_id}/close")
+def close_incident(incident_id: str, user=Depends(get_current_user)):
+    if is_local():
+        store = get_store()
+        inc = store.get_incident(incident_id)
+        if not inc:
+            raise HTTPException(404, "Incident not found")
+        is_staff = user.get("role") in ("officer", "admin")
+        is_owner = inc.get("reporterId") == user["id"]
+        if not is_staff and not (is_owner and inc.get("status") == "resolved"):
+            raise HTTPException(403, "Only staff or the reporter of a resolved complaint can close it")
+        updated = store.update_status(incident_id, "closed", actor=user, note="Complaint closed.")
+        return updated
+    raise HTTPException(501, "Close not implemented for Firestore yet")
 
 
 @router.post("/incidents/{incident_id}/rate")
 def rate_incident(incident_id: str, body: RatingInput, user=Depends(get_current_user)):
     if is_local():
         store = get_store()
+        inc = store.get_incident(incident_id)
+        if not inc:
+            raise HTTPException(404, "Incident not found")
+        if inc.get("status") not in ("resolved", "closed"):
+            raise HTTPException(400, "Complaint must be resolved or closed before rating")
         ok = store.rate_incident(incident_id, user["id"], body.rating, body.comment)
         if not ok:
-            from fastapi import HTTPException
-            raise HTTPException(403, "Cannot rate")
+            raise HTTPException(403, "Only the reporter can rate")
         return {"ok": True, "rating": body.rating}
     db = get_db()
     ref = db.collection("incidents").document(incident_id)
     snap = ref.get()
     if not snap.exists:
-        from fastapi import HTTPException
         raise HTTPException(404, "Incident not found")
     inc = snap.to_dict()
     if inc.get("reporterId") != user["id"]:
-        from fastapi import HTTPException
         raise HTTPException(403, "Only the reporter can rate")
     ref.update({"rating": body.rating, "ratingComment": body.comment})
     db.collection("users").document(user["id"]).update({"stars": user.get("stars", 0) + 10})
@@ -199,7 +250,6 @@ def help_incident(incident_id: str, user=Depends(get_current_user)):
     ref = db.collection("incidents").document(incident_id)
     snap = ref.get()
     if not snap.exists:
-        from fastapi import HTTPException
         raise HTTPException(404, "Incident not found")
     inc = snap.to_dict()
     helped = inc.get("helpedBy", [])

@@ -1,28 +1,200 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   OCOR Static Primitive Palette (55 PIL-sampled swatches)
+   ========================================================================== */
 @theme {
-  --color-cream: #f7f4ec;
-  --color-paper: #fbf9f4;
-  --color-ink: #0e1d38;
-  --color-ink-2: #1b2c4c;
-  --color-muted: #6e6b60;
-  --color-line: #e5e0d3;
-  --color-line-strong: #d6d0bf;
-  --color-gold: #e3a33c;
-  --color-gold-soft: #fbf1dd;
-  --color-green: #1c8c57;
-  --color-green-soft: #e7f5ed;
-  --color-danger: #b4442e;
-  --color-danger-soft: #fbebe7;
+  /* Core */
+  --color-primary: #1976d2;
+  --color-secondary: #f5a623;
+  --color-accent: #f5a623;
+  --color-surface-light: #f2f9fd;
+  --color-surface-dark: #0b3c5d;
+  --color-surface-container-base: #ffffff;
 
+  /* Outlines */
+  --color-outline-base: #8293a3;
+  --color-outline-variant-base: #d4e4f6;
+
+  /* Success (10..95) */
+  --color-success: #3dbe8b;
+  --color-success-10: #002114;
+  --color-success-30: #005237;
+  --color-success-50: #00885e;
+  --color-success-70: #40c08d;
+  --color-success-90: #7ef9c2;
+  --color-success-95: #beffdc;
+
+  /* Error (10..95) */
+  --color-error: #e5484d;
+  --color-error-10: #410006;
+  --color-error-30: #92011a;
+  --color-error-50: #db3e44;
+  --color-error-70: #ff8986;
+  --color-error-90: #ffdad8;
+  --color-error-95: #ffedeb;
+
+  /* Neutral Gray (10..95) */
+  --color-neutral: #5b6b7a;
+  --color-neutral-10: #0d1d2a;
+  --color-neutral-20: #22323f;
+  --color-neutral-30: #394856;
+  --color-neutral-40: #50606f;
+  --color-neutral-50: #697988;
+  --color-neutral-60: #8293a3;
+  --color-neutral-70: #9dadbe;
+  --color-neutral-80: #bbc8d9;
+  --color-neutral-90: #d4e4f6;
+  --color-neutral-95: #e7f2ff;
+
+  /* Primary Dark & Light (10..95) */
+  --color-primary-dark: #1976d2;
+  --color-primary-10: #001e2d;
+  --color-primary-20: #00344b;
+  --color-primary-30: #00466a;
+  --color-primary-40: #00658c;
+  --color-primary-50: #0080ae;
+  --color-primary-60: #57aed8;
+  --color-primary-70: #51b5ea;
+  --color-primary-80: #80cfff;
+  --color-primary-90: #c5e7ff;
+  --color-primary-95: #e4f3ff;
+  --color-primary-light: #4fb3e8;
+
+  /* Secondary Shade (10..95) */
+  --color-secondary-base: #f5a623;
+  --color-secondary-10: #291800;
+  --color-secondary-20: #452b00;
+  --color-secondary-30: #633f00;
+  --color-secondary-40: #835500;
+  --color-secondary-50: #a46b00;
+  --color-secondary-60: #d19b33;
+  --color-secondary-70: #e89b14;
+  --color-secondary-80: #ffb955;
+  --color-secondary-90: #ffddb4;
+  --color-secondary-95: #ffeedd;
+
+  /* Typography & Radii */
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-sora), var(--font-inter), ui-sans-serif, sans-serif;
 
   --radius-card: 1.15rem;
   --radius-xl2: 1.5rem;
 
-  --shadow-soft: 0 1px 2px rgba(14, 29, 56, 0.04), 0 12px 30px -18px rgba(14, 29, 56, 0.25);
-  --shadow-lift: 0 2px 4px rgba(14, 29, 56, 0.05), 0 22px 48px -24px rgba(14, 29, 56, 0.35);
+  /* Token-derived Shadows (zero hardcoded rgba) */
+  --shadow-soft:
+    0 1px 2px color-mix(in srgb, var(--ocor-shadow-base) 4%, transparent),
+    0 12px 30px -18px color-mix(in srgb, var(--ocor-shadow-base) 25%, transparent);
+  --shadow-lift:
+    0 2px 4px color-mix(in srgb, var(--ocor-shadow-base) 5%, transparent),
+    0 22px 48px -24px color-mix(in srgb, var(--ocor-shadow-base) 35%, transparent);
+}
+
+/* ==========================================================================
+   Runtime Light & Dark Semantic Surface Tokens + Legacy Compatibility Aliases
+   ========================================================================== */
+:root {
+  --ocor-bg: var(--color-surface-light);
+  --ocor-surface: var(--color-surface-light);
+  --ocor-surface-container: var(--color-surface-container-base);
+  --ocor-surface-elevated: var(--color-primary-95);
+  --ocor-text: var(--color-primary-10);
+  --ocor-text-2: var(--color-primary-20);
+  --ocor-muted: var(--color-neutral-50);
+  --ocor-outline: var(--color-outline-variant-base);
+  --ocor-outline-strong: var(--color-outline-base);
+  --ocor-primary: var(--color-primary);
+  --ocor-primary-contrast: var(--color-surface-container-base);
+  --ocor-secondary: var(--color-accent);
+  --ocor-secondary-soft: var(--color-secondary-95);
+  --ocor-success: var(--color-success-50);
+  --ocor-success-soft: var(--color-success-95);
+  --ocor-error: var(--color-error);
+  --ocor-error-soft: var(--color-error-95);
+  --ocor-shadow-base: var(--color-primary-10);
+
+  /* Legacy CSS variable aliases for unmigrated components/pages */
+  --color-cream: var(--ocor-bg);
+  --color-paper: var(--ocor-surface);
+  --color-ink: var(--ocor-text);
+  --color-ink-2: var(--ocor-text-2);
+  --color-ink-soft: var(--ocor-text-2);
+  --color-muted: var(--ocor-muted);
+  --color-line: var(--ocor-outline);
+  --color-line-strong: var(--ocor-outline-strong);
+  --color-gold: var(--ocor-secondary);
+  --color-gold-soft: var(--ocor-secondary-soft);
+  --color-green: var(--ocor-success);
+  --color-green-soft: var(--ocor-success-soft);
+  --color-danger: var(--ocor-error);
+  --color-danger-soft: var(--ocor-error-soft);
+}
+
+[data-theme="dark"],
+.dark {
+  --ocor-bg: var(--color-surface-dark);
+  --ocor-surface: var(--color-primary-10);
+  --ocor-surface-container: var(--color-primary-20);
+  --ocor-surface-elevated: var(--color-primary-30);
+  --ocor-text: var(--color-neutral-95);
+  --ocor-text-2: var(--color-neutral-90);
+  --ocor-muted: var(--color-neutral-70);
+  --ocor-outline: var(--color-neutral-30);
+  --ocor-outline-strong: var(--color-neutral-50);
+  --ocor-primary: var(--color-primary-light);
+  --ocor-primary-contrast: var(--color-primary-10);
+  --ocor-secondary: var(--color-secondary-80);
+  --ocor-secondary-soft: var(--color-secondary-20);
+  --ocor-success: var(--color-success-70);
+  --ocor-success-soft: var(--color-success-10);
+  --ocor-error: var(--color-error-70);
+  --ocor-error-soft: var(--color-error-10);
+  --ocor-shadow-base: var(--color-neutral-10);
+
+  /* Legacy CSS variable aliases redeclared for scoped .dark sub-trees */
+  --color-cream: var(--ocor-bg);
+  --color-paper: var(--ocor-surface);
+  --color-ink: var(--ocor-text);
+  --color-ink-2: var(--ocor-text-2);
+  --color-ink-soft: var(--ocor-text-2);
+  --color-muted: var(--ocor-muted);
+  --color-line: var(--ocor-outline);
+  --color-line-strong: var(--ocor-outline-strong);
+  --color-gold: var(--ocor-secondary);
+  --color-gold-soft: var(--ocor-secondary-soft);
+  --color-green: var(--ocor-success);
+  --color-green-soft: var(--ocor-success-soft);
+  --color-danger: var(--ocor-error);
+  --color-danger-soft: var(--ocor-error-soft);
+}
+
+@theme inline {
+  /* Semantic Tailwind utilities */
+  --color-bg: var(--ocor-bg);
+  --color-surface: var(--ocor-surface);
+  --color-surface-container: var(--ocor-surface-container);
+  --color-surface-elevated: var(--ocor-surface-elevated);
+  --color-foreground: var(--ocor-text);
+  --color-outline: var(--ocor-outline-strong);
+  --color-outline-variant: var(--ocor-outline);
+  --color-brand: var(--ocor-primary);
+  --color-brand-contrast: var(--ocor-primary-contrast);
+
+  /* Legacy Tailwind utilities (supports opacity modifiers & dark mode) */
+  --color-cream: var(--ocor-bg);
+  --color-paper: var(--ocor-surface);
+  --color-ink: var(--ocor-text);
+  --color-ink-2: var(--ocor-text-2);
+  --color-ink-soft: var(--ocor-text-2);
+  --color-muted: var(--ocor-muted);
+  --color-line: var(--ocor-outline);
+  --color-line-strong: var(--ocor-outline-strong);
+  --color-gold: var(--ocor-secondary);
+  --color-gold-soft: var(--ocor-secondary-soft);
+  --color-green: var(--ocor-success);
+  --color-green-soft: var(--ocor-success-soft);
+  --color-danger: var(--ocor-error);
+  --color-danger-soft: var(--ocor-error-soft);
 }
 
 @layer base {
@@ -33,8 +205,8 @@
     scroll-behavior: smooth;
   }
   body {
-    background-color: var(--color-cream);
-    color: var(--color-ink);
+    background-color: var(--ocor-bg);
+    color: var(--ocor-text);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
@@ -46,8 +218,8 @@
     font: inherit;
   }
   ::selection {
-    background: var(--color-ink);
-    color: var(--color-cream);
+    background: var(--ocor-primary);
+    color: var(--ocor-primary-contrast);
   }
 }
 
@@ -56,7 +228,7 @@
     @apply text-[10px] font-semibold uppercase tracking-[0.16em] text-muted;
   }
   .card {
-    @apply rounded-[var(--radius-card)] border border-line bg-white shadow-[var(--shadow-soft)];
+    @apply rounded-[var(--radius-card)] border border-line bg-surface-container shadow-[var(--shadow-soft)];
   }
   .hairline {
     @apply h-px w-full bg-line;
@@ -65,12 +237,19 @@
     @apply flex size-10 shrink-0 items-center justify-center rounded-xl border border-line bg-paper text-ink;
   }
   .field {
-    @apply w-full rounded-xl border border-line bg-white px-3.5 py-3 text-[14px] text-ink outline-none transition placeholder:text-muted/60 focus:border-ink/40 focus:ring-4 focus:ring-ink/5;
+    @apply w-full rounded-xl border border-line bg-surface-container px-3.5 py-3 text-[14px] text-ink outline-none transition placeholder:text-muted/60 focus:border-ink/40 focus:ring-4 focus:ring-ink/5;
   }
   select.field {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236e6b60' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-image:
+      linear-gradient(45deg, transparent 50%, var(--ocor-muted) 50%),
+      linear-gradient(135deg, var(--ocor-muted) 50%, transparent 50%);
+    background-position:
+      calc(100% - 19px) 50%,
+      calc(100% - 14px) 50%;
+    background-size:
+      5px 5px,
+      5px 5px;
     background-repeat: no-repeat;
-    background-position: right 0.9rem center;
   }
   .no-scrollbar::-webkit-scrollbar {
     display: none;
@@ -83,7 +262,7 @@
 
 /* Mobile-first: full-bleed phone column */
 .app-backdrop {
-  background-color: var(--color-cream);
+  background-color: var(--ocor-bg);
   min-height: 100dvh;
 }
 
@@ -95,7 +274,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--color-paper);
+  background: var(--ocor-surface);
   position: relative;
   isolation: isolate;
 }
@@ -103,7 +282,7 @@
 /* Desktop: clean web app, no phone mockup chrome */
 @media (min-width: 768px) {
   .app-backdrop {
-    background-color: var(--color-paper);
+    background-color: var(--ocor-surface);
     background-image: none;
   }
   .phone-screen {
@@ -132,6 +311,11 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--ocor-surface-container) 35%, transparent),
+    transparent
+  );
   animation: sweep 2.4s ease-in-out infinite;
 }
