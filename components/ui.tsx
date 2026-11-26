@@ -16,7 +16,7 @@ import {
 import { BRAND } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 import type { CategoryId, IncidentStatus, Severity } from "@/lib/types";
-import { STATUS_META } from "@/lib/catalog";
+import { STATUS_META, normalizeStatus } from "@/lib/catalog";
 import { initials } from "@/lib/format";
 
 /* ---------------------------------- brand --------------------------------- */
@@ -144,7 +144,7 @@ export function Pill({
 }
 
 export function StatusBadge({ status, className }: { status: IncidentStatus; className?: string }) {
-  const meta = STATUS_META[status];
+  const meta = STATUS_META[normalizeStatus(status)];
   return (
     <Pill tone={meta.tone} className={className}>
       {meta.short}

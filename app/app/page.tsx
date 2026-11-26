@@ -22,7 +22,7 @@ import {
   StarCount,
   StatusBadge,
 } from "@/components/ui";
-import { CATEGORIES, cityById } from "@/lib/catalog";
+import { CATEGORIES, cityById, mapColorForStatus } from "@/lib/catalog";
 import { haversineKm, formatKm } from "@/lib/geo";
 import { useApp, useSessionUser, useUnreadCount } from "@/lib/store";
 import { BRAND } from "@/lib/brand";
@@ -57,9 +57,9 @@ function HomeScreen() {
   }, [incidents, user?.id]);
 
   const citySummary = useMemo(() => {
-    const red = cityIncidents.filter((i) => i.mapColor === "RED").length;
-    const yellow = cityIncidents.filter((i) => i.mapColor === "YELLOW").length;
-    const green = cityIncidents.filter((i) => i.mapColor === "GREEN").length;
+    const red = cityIncidents.filter((i) => mapColorForStatus(i.status) === "RED").length;
+    const yellow = cityIncidents.filter((i) => mapColorForStatus(i.status) === "YELLOW").length;
+    const green = cityIncidents.filter((i) => mapColorForStatus(i.status) === "GREEN").length;
     return { red, yellow, green };
   }, [cityIncidents]);
 

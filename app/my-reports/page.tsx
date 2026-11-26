@@ -7,7 +7,7 @@ import { FileText, Search } from "lucide-react";
 import { AppFrame, HydrationGate } from "@/components/app-frame";
 import { IncidentCard } from "@/components/incident-card";
 import { Button, EmptyState, PageHeader, Select, TextInput } from "@/components/ui";
-import { CATEGORIES, STATUS_FLOW, STATUS_META } from "@/lib/catalog";
+import { CATEGORIES, STATUS_FLOW, STATUS_META, normalizeStatus } from "@/lib/catalog";
 import { useApp, useSessionUser } from "@/lib/store";
 
 function MyReportsScreen() {
@@ -89,7 +89,7 @@ function MyReportsScreen() {
             <option value="all">All Status</option>
             {STATUS_FLOW.map((st) => (
               <option key={st} value={st}>
-                {STATUS_META[st].short}
+                {STATUS_META[normalizeStatus(st)].short}
               </option>
             ))}
           </Select>

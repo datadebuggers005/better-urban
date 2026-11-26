@@ -23,7 +23,7 @@ import {
   TextArea,
 } from "@/components/ui";
 import { apiGetIncident, resolveMediaUrl } from "@/lib/api";
-import { STATUS_FLOW, STATUS_META, categoryById, cityById } from "@/lib/catalog";
+import { STATUS_FLOW, STATUS_META, normalizeStatus, mapColorForStatus, categoryById, cityById } from "@/lib/catalog";
 import { formatDate } from "@/lib/format";
 import { useApp, useSessionUser } from "@/lib/store";
 import { BRAND } from "@/lib/brand";
@@ -73,7 +73,7 @@ function TrackScreen() {
 
   const category = categoryById(incident.categoryId);
   const city = cityById(incident.cityId);
-  const currentStep = STATUS_META[incident.status]?.step ?? 0;
+  const currentStep = STATUS_META[normalizeStatus(incident.status)]?.step ?? 0;
   const isReporter = user?.id && incident.reporterId === user.id;
   const isStaff = user?.role === "officer" || user?.role === "admin";
   const canClose = incident.status === "resolved" && (isReporter || isStaff);
@@ -101,7 +101,7 @@ function TrackScreen() {
   };
 
   const shareTicket = async () => {
-    const text = `${BRAND.name} (${BRAND.tagline}) · ${incident.code}: ${incident.title} in ${city.name} Ward ${incident.wardNumber} [${STATUS_META[incident.status].label}] ${BRAND.hashtags.join(" ")}`;
+    const text = `${BRAND.name} (${BRAND.tagline}) · ${incident.code}: ${incident.title} in ${city.name} Ward ${incident.wardNumber} [${STATUS_META[normalizeStatus(incident.status)].label}] ${BRAND.hashtags.join(" ")}`;
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -145,14 +145,14 @@ function TrackScreen() {
             </div>
             <Pill
               tone={
-                incident.mapColor === "GREEN"
+                mapColorForStatus(incident.status) === "GREEN"
                   ? "green"
-                  : incident.mapColor === "YELLOW"
+                  : mapColorForStatus(incident.status) === "YELLOW"
                     ? "gold"
                     : "danger"
               }
             >
-              Map Pin: {incident.mapColor}
+              Map Pin: {mapColorForStatus(incident.status)}
             </Pill>
           </div>
 

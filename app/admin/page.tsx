@@ -25,7 +25,7 @@ import {
   apiAdminUpdateUserRole,
   apiAdminUsers,
 } from "@/lib/api";
-import { CATEGORIES, STATUS_FLOW, STATUS_META } from "@/lib/catalog";
+import { CATEGORIES, STATUS_FLOW, STATUS_META, normalizeStatus } from "@/lib/catalog";
 import { formatDate } from "@/lib/format";
 import { useApp, useSessionUser } from "@/lib/store";
 import type {
@@ -201,7 +201,7 @@ function AdminScreen() {
                 <option value="all">All Status</option>
                 {STATUS_FLOW.map((s) => (
                   <option key={s} value={s}>
-                    {STATUS_META[s].short}
+                    {STATUS_META[normalizeStatus(s)].short}
                   </option>
                 ))}
               </Select>
@@ -230,7 +230,7 @@ function AdminScreen() {
                   >
                     {STATUS_FLOW.map((st) => (
                       <option key={st} value={st}>
-                        {STATUS_META[st].label}
+                        {STATUS_META[normalizeStatus(st)].label}
                       </option>
                     ))}
                   </Select>

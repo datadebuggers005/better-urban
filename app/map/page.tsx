@@ -13,7 +13,7 @@ import {
   Select,
   StatusBadge,
 } from "@/components/ui";
-import { CATEGORIES, STATUS_META, categoryById, cityById } from "@/lib/catalog";
+import { CATEGORIES, STATUS_META, normalizeStatus, mapColorForStatus, categoryById, cityById } from "@/lib/catalog";
 import { resolveMediaUrl } from "@/lib/api";
 import { useApp } from "@/lib/store";
 import type { Incident } from "@/lib/types";
@@ -50,9 +50,9 @@ function MapScreen() {
 
   const counts = useMemo(() => {
     return {
-      red: filtered.filter((i) => i.mapColor === "RED").length,
-      yellow: filtered.filter((i) => i.mapColor === "YELLOW").length,
-      green: filtered.filter((i) => i.mapColor === "GREEN").length,
+      red: filtered.filter((i) => mapColorForStatus(i.status) === "RED").length,
+      yellow: filtered.filter((i) => mapColorForStatus(i.status) === "YELLOW").length,
+      green: filtered.filter((i) => mapColorForStatus(i.status) === "GREEN").length,
     };
   }, [filtered]);
 
@@ -150,14 +150,14 @@ function MapScreen() {
               <StatusBadge status={selected.status} />
               <Pill
                 tone={
-                  selected.mapColor === "GREEN"
+                  mapColorForStatus(selected.status) === "GREEN"
                     ? "green"
-                    : selected.mapColor === "YELLOW"
+                    : mapColorForStatus(selected.status) === "YELLOW"
                       ? "gold"
                       : "danger"
                 }
               >
-                {selected.mapColor}
+                {mapColorForStatus(selected.status)}
               </Pill>
             </div>
 
@@ -210,14 +210,14 @@ function MapScreen() {
               <div className="min-w-0">
                 <p className="truncate text-[12.5px] font-semibold">{inc.title}</p>
                 <p className="text-[11px] text-muted">
-                  {inc.code} · Ward {inc.wardNumber} · {STATUS_META[inc.status].label}
+                  {inc.code} · Ward {inc.wardNumber} · {STATUS_META[normalizeStatus(inc.status)].label}
                 </p>
               </div>
               <span
                 className={
-                  inc.mapColor === "GREEN"
+                  mapColorForStatus(inc.status) === "GREEN"
                     ? "size-3 rounded-full bg-success"
-                    : inc.mapColor === "YELLOW"
+                    : mapColorForStatus(inc.status) === "YELLOW"
                       ? "size-3 rounded-full bg-secondary"
                       : "size-3 rounded-full bg-error"
                 }
