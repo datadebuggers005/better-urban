@@ -1,21 +1,25 @@
 """Local SQLite-backed store implementing the same operations as the Firestore backend."""
 import random
-import string
-import uuid as _uuid
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
-from db.models import SessionLocal, User, Incident, Notification, init_db
-from services.seed_data import CITIES, SECTORS, orgs_for_city, DEMO_NGOS
+from core.auth import hash_password
+from db.models import SessionLocal, User, Incident, Notification, Feedback, ActivityLog, init_db
+from services.seed_data import (
+    CITIES,
+    SECTORS,
+    CATEGORIES,
+    SUB_CATEGORIES,
+    STATUS_META,
+    DEMO_NGOS,
+    orgs_for_city,
+    city_by_id,
+    ward_for_sector,
+    normalize_category_id,
+    normalize_status,
+    map_color_for_status,
+)
 from utils.geo import haversine_km
-
-STATUS_META = {
-    "reported": {"label": "Reported", "short": "Reported", "step": 0},
-    "dispatched": {"label": "Alert dispatched", "short": "Dispatched", "step": 1},
-    "acknowledged": {"label": "Authority acknowledged", "short": "Acknowledged", "step": 2},
-    "in_progress": {"label": "Work in progress", "short": "In progress", "step": 3},
-    "resolved": {"label": "Resolved", "short": "Resolved", "step": 4},
-}
 
 
 def _uid(prefix="id"):
@@ -39,56 +43,202 @@ class LocalStore:
         try:
             if db.query(User).count() > 0:
                 return
-            # seed cities/sectors already in seed_data; seed users + incidents
-            from services.seed_data import SECTORS as _S
-            # create demo user
+
+            now = _now()
+            # Primary demo citizen + officer + admin
             db.add(User(
-                id="u_demo", name="Riya Sharma", email="demo@betterurban.app",
-                password="demo1234", phone="", cityId="metro", sectorId="metro-s18",
-                stars=340, helped=6, isVolunteer=True,
-                skills=["Traffic Support", "First Aid"], preferredCategories=["road", "waste"],
-                alertsEnabled=True, alertRadiusKm=3, role="citizen", createdAt=_now(),
+                id="u_demo",
+                name="Riya Sharma",
+                email="demo@ocor.city",
+                password=hash_password("demo1234"),
+                phone="",
+                cityId="metro",
+                sectorId="metro-s18",
+                stars=340,
+                helped=6,
+                isVolunteer=True,
+                skills=["Traffic Support", "First Aid"],
+                preferredCategories=["road", "garbage"],
+                alertsEnabled=True,
+                alertRadiusKm=3,
+                role="citizen",
+                createdAt=now,
             ))
-            # seed a few citizens
-            import hashlib
-            for i in range(50):
+            db.add(User(
+                id="u_officer",
+                name="Vikram Mehta",
+                email="officer@ocor.city",
+                password=hash_password("officer1234"),
+                phone="",
+                cityId="metro",
+                sectorId="metro-s5",
+                stars=120,
+                helped=18,
+                isVolunteer=False,
+                skills=["Field Inspection"],
+                preferredCategories=["road", "water", "drainage"],
+                alertsEnabled=True,
+                alertRadiusKm=5,
+                role="officer",
+                createdAt=now,
+            ))
+            db.add(User(
+                id="u_admin",
+                name="Ananya Verma",
+                email="admin@ocor.city",
+                password=hash_password("admin1234"),
+                phone="",
+                cityId="metro",
+                sectorId="metro-s1",
+                stars=500,
+                helped=42,
+                isVolunteer=False,
+                skills=["Operations", "Dispatch"],
+                preferredCategories=["road", "water", "garbage", "drainage", "streetlight"],
+                alertsEnabled=True,
+                alertRadiusKm=10,
+                role="admin",
+                createdAt=now,
+            ))
+
+            # Seed sample citizens across wards
+            for i in range(1, 21):
                 uid = f"u_seed_{i}"
                 db.add(User(
-                    id=uid, name=f"Citizen {i}", email=f"citizen{i}@betterurban.app",
-                    password="demo1234", phone="", cityId="metro",
-                    sectorId=f"metro-s{(i % 20) + 1}", stars=random.randint(0, 200),
-                    helped=random.randint(0, 10), isVolunteer=random.random() > 0.7,
-                    skills=[], preferredCategories=["road", "waste"],
-                    alertsEnabled=True, alertRadiusKm=3, role="citizen", createdAt=_now(),
+                    id=uid,
+                    name=f"Citizen {i}",
+                    email=f"citizen{i}@ocor.city",
+                    password=hash_password("demo1234"),
+                    phone="",
+                    cityId="metro",
+                    sectorId=f"metro-s{i}",
+                    stars=random.randint(20, 220),
+                    helped=random.randint(0, 10),
+                    isVolunteer=(i % 3 == 0),
+                    skills=[],
+                    preferredCategories=["road", "garbage"],
+                    alertsEnabled=True,
+                    alertRadiusKm=3,
+                    role="citizen",
+                    createdAt=now,
                 ))
-            # seed a few incidents for metro
-            titles = ["Potholes / Damaged Road", "Garbage Dump", "Roadblock / Traffic Jam", "Pipe Leak / Burst", "Open Manhole"]
-            for i in range(15):
+
+            # Seed 15 diverse incidents across 5 categories, 7 statuses, and multiple wards/cities
+            seed_specs = [
+                ("road", "road-pothole", "Deep pothole near main crossing", "metro", 18, "submitted", "high", ["pothole", "damaged road"]),
+                ("water", "water-leak", "Main water pipeline burst on avenue", "metro", 12, "under_review", "critical", ["pipe leak", "water burst"]),
+                ("garbage", "garbage-dump", "Uncollected garbage pile near market", "metro", 7, "verified", "medium", ["garbage dump", "waste"]),
+                ("drainage", "drainage-overflow", "Blocked storm drain overflowing", "metro", 4, "assigned", "high", ["blocked drain", "overflow"]),
+                ("streetlight", "streetlight-outage", "Three streetlights out on park lane", "metro", 9, "in_progress", "medium", ["dark street", "broken streetlight"]),
+                ("road", "road-jam", "Traffic signal failure causing gridlock", "metro", 15, "resolved", "high", ["traffic jam", "signal"]),
+                ("garbage", "garbage-bin", "Overflowing community bin", "metro", 2, "closed", "low", ["overflowing bin", "litter"]),
+                ("water", "water-supply", "Low water pressure in morning hours", "riverport", 6, "submitted", "medium", ["no water", "supply"]),
+                ("drainage", "drainage-manhole", "Open manhole without barricade", "riverport", 11, "in_progress", "critical", ["open manhole", "safety"]),
+                ("streetlight", "streetlight-dark", "Dark stretch near school gate", "northvale", 3, "assigned", "high", ["poor lighting", "school zone"]),
+                ("road", "road-pothole", "Damaged speed breaker near clinic", "oldtown", 8, "resolved", "medium", ["damaged road"]),
+                ("garbage", "garbage-dump", "Construction debris dumped on footpath", "greenfield", 14, "verified", "medium", ["garbage dump"]),
+            ]
+
+            for idx, (cat, sub, title, c_id, ward, status, sev, tags) in enumerate(seed_specs):
+                sec_id = f"{c_id}-s{ward}"
+                sec = next((s for s in SECTORS if s["id"] == sec_id), SECTORS[0])
+                code = f"OC-{2100 + idx}"
+                reporter_id = "u_demo" if idx < 4 else f"u_seed_{(idx % 20) + 1}"
+                reporter_name = "Riya Sharma" if idx < 4 else f"Citizen {(idx % 20) + 1}"
+                assigned_to = "u_officer" if status in ("assigned", "in_progress", "resolved", "closed") else None
+                assigned_name = "Vikram Mehta" if assigned_to else None
                 db.add(Incident(
-                    id=f"inc_metro_{i}", code=f"BU-{2049 + i}", cityId="metro",
-                    sectorId=f"metro-s{(i % 20) + 1}", categoryId="road",
-                    subCategoryId="road-pothole", title=titles[i % len(titles)],
-                    note="Seeded demo incident.", lat=28.6448, lng=77.2167,
-                    landmark=f"Sector {(i % 20) + 1} Main Rd", photoUrl=None,
-                    isAnonymous=False, reporterId="u_demo" if i < 3 else f"u_seed_{i}",
-                    reporterName="Riya Sharma" if i < 3 else f"Citizen {i}",
-                    status=["resolved", "dispatched", "in_progress", "reported", "acknowledged"][i % 5],
-                    severity="medium", radiusKm=3.0, alertedCount=10,
-                    notifiedOrgs=["Metro City Municipal Control Room", "Metro City Traffic Police"],
-                    notifiedNgos=DEMO_NGOS, events=[], helpedBy=[],
-                    createdAt=_now(), resolvedAt=None, rating=5 if i % 5 == 0 else None,
-                    ratingComment=None,
+                    id=f"inc_seed_{idx}",
+                    code=code,
+                    cityId=c_id,
+                    sectorId=sec_id,
+                    wardNumber=ward,
+                    categoryId=cat,
+                    subCategoryId=sub,
+                    title=title,
+                    note="Seeded civic report for OCOR live map and workflow.",
+                    lat=sec["lat"],
+                    lng=sec["lng"],
+                    landmark=f"Ward {ward} Main Road",
+                    photoUrl=None,
+                    tags=tags,
+                    isAnonymous=False,
+                    reporterId=reporter_id,
+                    reporterName=reporter_name,
+                    status=status,
+                    severity=sev,
+                    radiusKm=3.0,
+                    alertedCount=12,
+                    notifiedOrgs=orgs_for_city(city_by_id(c_id)["name"]),
+                    notifiedNgos=DEMO_NGOS,
+                    events=[
+                        {
+                            "id": _uid("ev"),
+                            "kind": "status",
+                            "label": STATUS_META[status]["label"],
+                            "detail": f"Initial seeded state: {STATUS_META[status]['label']}.",
+                            "at": now,
+                        }
+                    ],
+                    helpedBy=[],
+                    assignedTo=assigned_to,
+                    assignedToName=assigned_name,
+                    duplicateOf=None,
+                    createdAt=now,
+                    resolvedAt=now if status in ("resolved", "closed") else None,
+                    closedAt=now if status == "closed" else None,
+                    rating=5 if status == "closed" else None,
+                    ratingComment="Quickly resolved by the ward team." if status == "closed" else None,
                 ))
-            db.add(Notification(id="n_1", userId="u_demo", type="status",
-                                incidentId="inc_metro_0", title="BU-2049 Field team assigned",
-                                body="Your report was acknowledged by the Metro City control room.",
-                                createdAt=_now(), read=False))
+
+            db.add(Notification(
+                id="n_seed_1",
+                userId="u_demo",
+                type="status",
+                incidentId="inc_seed_0",
+                title="OC-2100 · Submitted",
+                body="Your report in Ward 18 has been logged with OCOR.",
+                createdAt=now,
+                read=False,
+            ))
+            db.add(ActivityLog(
+                id="log_seed_1",
+                actorId="u_admin",
+                actorName="Ananya Verma",
+                actorRole="admin",
+                action="system_seed",
+                targetType="system",
+                targetId="ocor-local",
+                detail="Initialized OCOR local database with roles, wards, and sample incidents.",
+                metadataJson={"count": len(seed_specs)},
+                createdAt=now,
+            ))
             db.commit()
         finally:
             db.close()
 
     # ---------- users ----------
-    def get_user(self, uid):
+    def _user_dict(self, u: User) -> dict:
+        return {
+            "id": u.id,
+            "name": u.name,
+            "email": u.email,
+            "phone": u.phone,
+            "cityId": u.cityId,
+            "sectorId": u.sectorId,
+            "stars": u.stars,
+            "helped": u.helped,
+            "isVolunteer": u.isVolunteer,
+            "skills": u.skills or [],
+            "preferredCategories": u.preferredCategories or [],
+            "alertsEnabled": u.alertsEnabled,
+            "alertRadiusKm": u.alertRadiusKm,
+            "role": u.role,
+            "createdAt": u.createdAt,
+            "password": u.password,
+        }
+
+    def get_user(self, uid: str):
         db = self._session()
         try:
             u = db.query(User).filter(User.id == uid).first()
@@ -96,39 +246,80 @@ class LocalStore:
         finally:
             db.close()
 
-    def get_user_by_email(self, email):
+    def get_user_by_email(self, email: str):
         db = self._session()
         try:
-            u = db.query(User).filter(User.email == email.lower()).first()
+            normalized = (email or "").strip().lower()
+            if normalized == "demo@betterurban.app":
+                normalized = "demo@ocor.city"
+            u = db.query(User).filter(User.email == normalized).first()
             return self._user_dict(u) if u else None
         finally:
             db.close()
 
-    def create_user(self, name, email, password, city_id):
+    def create_user(self, name: str, email: str, password: str, city_id: str, role: str = "citizen"):
         db = self._session()
         try:
             uid = f"u_{_uid('new')}"
             sector_id = f"{city_id}-s18"
-            u = User(id=uid, name=name.strip(), email=email.strip().lower(),
-                     password=password, phone="", cityId=city_id, sectorId=sector_id,
-                     stars=10, helped=0, isVolunteer=False, skills=[],
-                     preferredCategories=["road", "waste"], alertsEnabled=True,
-                     alertRadiusKm=3, role="citizen", createdAt=_now())
+            u = User(
+                id=uid,
+                name=name.strip(),
+                email=email.strip().lower(),
+                password=hash_password(password),
+                phone="",
+                cityId=city_id,
+                sectorId=sector_id,
+                stars=10,
+                helped=0,
+                isVolunteer=False,
+                skills=[],
+                preferredCategories=["road", "garbage"],
+                alertsEnabled=True,
+                alertRadiusKm=3,
+                role=role,
+                createdAt=_now(),
+            )
             db.add(u)
             db.commit()
             return self._user_dict(u)
         finally:
             db.close()
 
-    def update_user(self, uid, updates):
+    def update_user(self, uid: str, updates: dict):
         db = self._session()
         try:
             u = db.query(User).filter(User.id == uid).first()
             if not u:
                 return None
             for k, v in updates.items():
-                if hasattr(u, k) and v is not None:
+                if hasattr(u, k) and v is not None and k != "role":
                     setattr(u, k, v)
+            db.commit()
+            return self._user_dict(u)
+        finally:
+            db.close()
+
+    def update_user_role(self, target_uid: str, new_role: str, actor: dict):
+        db = self._session()
+        try:
+            u = db.query(User).filter(User.id == target_uid).first()
+            if not u:
+                return None
+            old_role = u.role
+            u.role = new_role
+            db.add(ActivityLog(
+                id=_uid("log"),
+                actorId=actor.get("id"),
+                actorName=actor.get("name", "Admin"),
+                actorRole=actor.get("role", "admin"),
+                action="role_changed",
+                targetType="user",
+                targetId=target_uid,
+                detail=f"Changed role of {u.email} from {old_role} to {new_role}.",
+                metadataJson={"oldRole": old_role, "newRole": new_role},
+                createdAt=_now(),
+            ))
             db.commit()
             return self._user_dict(u)
         finally:
@@ -140,51 +331,96 @@ class LocalStore:
             q = db.query(User)
             if city_id:
                 q = q.filter(User.cityId == city_id)
-            return [self._user_dict(u) for u in q.all()]
+            out = []
+            for u in q.all():
+                d = self._user_dict(u)
+                d.pop("password", None)
+                out.append(d)
+            return out
         finally:
             db.close()
 
-    def _user_dict(self, u):
-        return {
-            "id": u.id, "name": u.name, "email": u.email, "phone": u.phone,
-            "cityId": u.cityId, "sectorId": u.sectorId, "stars": u.stars,
-            "helped": u.helped, "isVolunteer": u.isVolunteer, "skills": u.skills or [],
-            "preferredCategories": u.preferredCategories or [], "alertsEnabled": u.alertsEnabled,
-            "alertRadiusKm": u.alertRadiusKm, "role": u.role, "createdAt": u.createdAt,
-            "password": u.password,
-        }
-
     # ---------- incidents ----------
-    def _inc_dict(self, i):
+    def _inc_dict(self, i: Incident) -> dict:
+        norm_status = normalize_status(i.status)
         return {
-            "id": i.id, "code": i.code, "cityId": i.cityId, "sectorId": i.sectorId,
-            "categoryId": i.categoryId, "subCategoryId": i.subCategoryId, "title": i.title,
-            "note": i.note, "lat": i.lat, "lng": i.lng, "landmark": i.landmark,
-            "photoUrl": i.photoUrl, "isAnonymous": i.isAnonymous, "reporterId": i.reporterId,
-            "reporterName": i.reporterName, "status": i.status, "severity": i.severity,
-            "radiusKm": i.radiusKm, "alertedCount": i.alertedCount,
-            "notifiedOrgs": i.notifiedOrgs or [], "notifiedNgos": i.notifiedNgos or [],
-            "events": i.events or [], "helpedBy": i.helpedBy or [],
-            "createdAt": i.createdAt, "resolvedAt": i.resolvedAt,
-            "rating": i.rating, "ratingComment": i.ratingComment,
+            "id": i.id,
+            "code": i.code,
+            "cityId": i.cityId,
+            "sectorId": i.sectorId,
+            "wardNumber": i.wardNumber or ward_for_sector(i.sectorId),
+            "categoryId": normalize_category_id(i.categoryId),
+            "subCategoryId": i.subCategoryId,
+            "title": i.title,
+            "note": i.note,
+            "lat": i.lat,
+            "lng": i.lng,
+            "landmark": i.landmark,
+            "photoUrl": i.photoUrl,
+            "tags": i.tags or [],
+            "isAnonymous": i.isAnonymous,
+            "reporterId": i.reporterId,
+            "reporterName": i.reporterName,
+            "status": norm_status,
+            "mapColor": map_color_for_status(norm_status),
+            "severity": i.severity,
+            "radiusKm": i.radiusKm,
+            "alertedCount": i.alertedCount,
+            "notifiedOrgs": i.notifiedOrgs or [],
+            "notifiedNgos": i.notifiedNgos or [],
+            "events": i.events or [],
+            "helpedBy": i.helpedBy or [],
+            "assignedTo": i.assignedTo,
+            "assignedToName": i.assignedToName,
+            "duplicateOf": i.duplicateOf,
+            "createdAt": i.createdAt,
+            "resolvedAt": i.resolvedAt,
+            "closedAt": i.closedAt,
+            "rating": i.rating,
+            "ratingComment": i.ratingComment,
         }
 
-    def list_incidents(self, city_id=None, status=None, reporter_id=None, limit=100):
+    def list_incidents(
+        self,
+        city_id=None,
+        category_id=None,
+        status=None,
+        ward_number=None,
+        search=None,
+        reporter_id=None,
+        limit=100,
+    ):
         db = self._session()
         try:
             q = db.query(Incident)
             if city_id:
                 q = q.filter(Incident.cityId == city_id)
+            if category_id:
+                q = q.filter(Incident.categoryId == normalize_category_id(category_id))
             if status:
-                q = q.filter(Incident.status == status)
+                q = q.filter(Incident.status == normalize_status(status))
+            if ward_number is not None:
+                q = q.filter(Incident.wardNumber == ward_number)
             if reporter_id:
                 q = q.filter(Incident.reporterId == reporter_id)
-            q = q.order_by(Incident.createdAt.desc()).limit(limit)
-            return [self._inc_dict(i) for i in q.all()]
+            q = q.order_by(Incident.createdAt.desc())
+            items = [self._inc_dict(i) for i in q.all()]
+            if search:
+                needle = search.strip().lower()
+                items = [
+                    it
+                    for it in items
+                    if needle in (it.get("title") or "").lower()
+                    or needle in (it.get("code") or "").lower()
+                    or needle in (it.get("landmark") or "").lower()
+                    or needle in (it.get("note") or "").lower()
+                    or any(needle in t.lower() for t in (it.get("tags") or []))
+                ]
+            return items[:limit]
         finally:
             db.close()
 
-    def get_incident(self, iid):
+    def get_incident(self, iid: str):
         db = self._session()
         try:
             i = db.query(Incident).filter(Incident.id == iid).first()
@@ -192,53 +428,95 @@ class LocalStore:
         finally:
             db.close()
 
-    def create_incident(self, data, user):
+    def create_incident(self, data: dict, user: dict):
         db = self._session()
         try:
-            city_id = user["cityId"]
-            from services.seed_data import city_by_id, orgs_for_city
+            city_id = data.get("cityId") or user.get("cityId", "metro")
             city = city_by_id(city_id)
-            # audience
             point = {"lat": data["lat"], "lng": data["lng"]}
             audience = 0
-            for u in db.query(User).filter(User.cityId == city_id).all():
+            for u in db.query(User).filter(User.cityId == city["id"]).all():
                 sec = next((s for s in SECTORS if s["id"] == u.sectorId), None)
                 if sec and haversine_km(sec, point) <= 3:
                     audience += 1
             audience = max(audience, 1)
-            # unique code
+
             used = {i.code for i in db.query(Incident).all()}
             code = None
             while code is None or code in used:
-                code = f"BU-{random.randint(2000, 8999)}"
+                code = f"OC-{random.randint(2000, 8999)}"
+
             now = _now()
+            cat_id = normalize_category_id(data["categoryId"])
+            ward_num = data.get("wardNumber") or ward_for_sector(data["sectorId"])
+
             inc = Incident(
-                id=_uid("inc"), code=code, cityId=city["id"], sectorId=data["sectorId"],
-                categoryId=data["categoryId"], subCategoryId=data["subCategoryId"],
-                title=data["title"], note=data.get("note", ""), lat=data["lat"], lng=data["lng"],
-                landmark=data.get("landmark", ""), photoUrl=data.get("photoUrl"),
+                id=_uid("inc"),
+                code=code,
+                cityId=city["id"],
+                sectorId=data["sectorId"],
+                wardNumber=ward_num,
+                categoryId=cat_id,
+                subCategoryId=data["subCategoryId"],
+                title=data["title"],
+                note=data.get("note", ""),
+                lat=data["lat"],
+                lng=data["lng"],
+                landmark=data.get("landmark", ""),
+                photoUrl=data.get("photoUrl"),
+                tags=data.get("tags") or [],
                 isAnonymous=data.get("isAnonymous", False),
                 reporterId=None if data.get("isAnonymous") else user["id"],
                 reporterName="Anonymous citizen" if data.get("isAnonymous") else user["name"],
-                status="dispatched", severity=data.get("severity", "medium"),
-                radiusKm=3.0, alertedCount=audience,
-                notifiedOrgs=orgs_for_city(city["name"]), notifiedNgos=DEMO_NGOS,
+                status="submitted",
+                severity=data.get("severity", "medium"),
+                radiusKm=3.0,
+                alertedCount=audience,
+                notifiedOrgs=orgs_for_city(city["name"]),
+                notifiedNgos=DEMO_NGOS,
                 events=[
-                    {"id": _uid("ev"), "kind": "reported", "label": "Report received",
-                     "detail": "Citizen report logged on the 3 km dispatch network.", "at": now},
-                    {"id": _uid("ev"), "kind": "dispatch", "label": "Alert dispatched",
-                     "detail": f"{city['name']} control room, 2 partner NGOs and {audience} citizens inside 3 km were alerted.", "at": now},
+                    {
+                        "id": _uid("ev"),
+                        "kind": "submitted",
+                        "label": "Submitted",
+                        "detail": f"Complaint logged in {city['name']} (Ward {ward_num}).",
+                        "at": now,
+                    }
                 ],
-                helpedBy=[], createdAt=now, resolvedAt=None, rating=None, ratingComment=None,
+                helpedBy=[],
+                assignedTo=None,
+                assignedToName=None,
+                duplicateOf=data.get("duplicateOf"),
+                createdAt=now,
+                resolvedAt=None,
+                closedAt=None,
+                rating=None,
+                ratingComment=None,
             )
             db.add(inc)
-            # notification for reporter
             if not data.get("isAnonymous"):
-                db.add(Notification(id=_uid("n"), userId=user["id"], type="status",
-                                    incidentId=inc.id, title=f"{code} · Alert dispatched",
-                                    body=f"{city['name']} control room, 2 NGOs and {audience} neighbours have been alerted.",
-                                    createdAt=now, read=False))
-            # award stars
+                db.add(Notification(
+                    id=_uid("n"),
+                    userId=user["id"],
+                    type="status",
+                    incidentId=inc.id,
+                    title=f"{code} · Submitted",
+                    body=f"Your complaint in {city['name']} Ward {ward_num} has been submitted.",
+                    createdAt=now,
+                    read=False,
+                ))
+            db.add(ActivityLog(
+                id=_uid("log"),
+                actorId=user["id"],
+                actorName=user.get("name", "Citizen"),
+                actorRole=user.get("role", "citizen"),
+                action="incident_created",
+                targetType="incident",
+                targetId=inc.id,
+                detail=f"Submitted {code} ({cat_id}) in Ward {ward_num}.",
+                metadataJson={"code": code, "cityId": city["id"], "wardNumber": ward_num},
+                createdAt=now,
+            ))
             u = db.query(User).filter(User.id == user["id"]).first()
             if u:
                 u.stars = (u.stars or 0) + 10
@@ -248,39 +526,79 @@ class LocalStore:
         finally:
             db.close()
 
-    def update_status(self, incident_id, status, city_name_for_detail=None):
+    def update_status(
+        self,
+        incident_id: str,
+        status: str,
+        actor: dict,
+        note: str | None = None,
+        assigned_to: str | None = None,
+        assigned_to_name: str | None = None,
+    ):
         db = self._session()
         try:
             inc = db.query(Incident).filter(Incident.id == incident_id).first()
             if not inc:
                 return None
             now = _now()
-            meta = STATUS_META.get(status, STATUS_META["reported"])
-            events = list(inc.events or []) + [{
-                "id": _uid("ev"), "kind": "status",
-                "label": "Marked resolved" if status == "resolved" else meta["label"],
-                "detail": ("Field team marked the issue resolved. Awaiting citizen confirmation."
-                           if status == "resolved"
-                           else f"Status updated by the control room."),
-                "at": now,
-            }]
-            inc.status = status
+            norm_status = normalize_status(status)
+            meta = STATUS_META[norm_status]
+            old_status = inc.status
+
+            detail = note or f"Status updated from {old_status} to {meta['label']} by {actor.get('name', 'Officer')}."
+            events = list(inc.events or []) + [
+                {
+                    "id": _uid("ev"),
+                    "kind": "status",
+                    "label": meta["label"],
+                    "detail": detail,
+                    "at": now,
+                }
+            ]
+            inc.status = norm_status
             inc.events = events
-            if status == "resolved":
+            if assigned_to is not None:
+                inc.assignedTo = assigned_to
+            if assigned_to_name is not None:
+                inc.assignedToName = assigned_to_name
+            elif norm_status == "assigned" and not inc.assignedToName:
+                inc.assignedTo = actor.get("id")
+                inc.assignedToName = actor.get("name")
+            if norm_status == "resolved":
                 inc.resolvedAt = now
-            # notify reporter
+            if norm_status == "closed":
+                inc.closedAt = now
+
             if inc.reporterId:
-                db.add(Notification(id=_uid("n"), userId=inc.reporterId, type="status",
-                                    incidentId=incident_id, title=f"{inc.code} · {meta['label']}",
-                                    body=f"{inc.title} at {inc.landmark} is now {meta['short'].lower()}.",
-                                    createdAt=now, read=False))
+                db.add(Notification(
+                    id=_uid("n"),
+                    userId=inc.reporterId,
+                    type="status",
+                    incidentId=incident_id,
+                    title=f"{inc.code} · {meta['label']}",
+                    body=f"{inc.title} is now {meta['label']}.",
+                    createdAt=now,
+                    read=False,
+                ))
+            db.add(ActivityLog(
+                id=_uid("log"),
+                actorId=actor.get("id"),
+                actorName=actor.get("name", "Officer"),
+                actorRole=actor.get("role", "officer"),
+                action="status_updated",
+                targetType="incident",
+                targetId=incident_id,
+                detail=f"Updated {inc.code} status: {old_status} -> {norm_status}.",
+                metadataJson={"oldStatus": old_status, "newStatus": norm_status, "assignedTo": inc.assignedTo},
+                createdAt=now,
+            ))
             db.commit()
             db.refresh(inc)
             return self._inc_dict(inc)
         finally:
             db.close()
 
-    def rate_incident(self, incident_id, user_id, rating, comment=None):
+    def rate_incident(self, incident_id: str, user_id: str, rating: int, comment: str | None = None):
         db = self._session()
         try:
             inc = db.query(Incident).filter(Incident.id == incident_id).first()
@@ -296,7 +614,7 @@ class LocalStore:
         finally:
             db.close()
 
-    def help_incident(self, incident_id, user_id):
+    def help_incident(self, incident_id: str, user_id: str):
         db = self._session()
         try:
             inc = db.query(Incident).filter(Incident.id == incident_id).first()
@@ -317,16 +635,46 @@ class LocalStore:
             db.close()
 
     # ---------- notifications ----------
-    def list_notifications(self, user_id):
+    def add_notification(self, user_id: str, title: str, body: str, ntype: str = "system", incident_id: str | None = None):
         db = self._session()
         try:
-            docs = db.query(Notification).filter(Notification.userId == user_id).order_by(Notification.createdAt.desc()).all()
-            return [{"id": n.id, "userId": n.userId, "type": n.type, "incidentId": n.incidentId,
-                     "title": n.title, "body": n.body, "createdAt": n.createdAt, "read": n.read} for n in docs]
+            n = Notification(
+                id=_uid("n"),
+                userId=user_id,
+                type=ntype,
+                incidentId=incident_id,
+                title=title,
+                body=body,
+                createdAt=_now(),
+                read=False,
+            )
+            db.add(n)
+            db.commit()
+            return n.id
         finally:
             db.close()
 
-    def mark_read(self, notif_id, user_id):
+    def list_notifications(self, user_id: str):
+        db = self._session()
+        try:
+            docs = db.query(Notification).filter(Notification.userId == user_id).order_by(Notification.createdAt.desc()).all()
+            return [
+                {
+                    "id": n.id,
+                    "userId": n.userId,
+                    "type": n.type,
+                    "incidentId": n.incidentId,
+                    "title": n.title,
+                    "body": n.body,
+                    "createdAt": n.createdAt,
+                    "read": n.read,
+                }
+                for n in docs
+            ]
+        finally:
+            db.close()
+
+    def mark_read(self, notif_id: str, user_id: str):
         db = self._session()
         try:
             n = db.query(Notification).filter(Notification.id == notif_id).first()
@@ -338,12 +686,54 @@ class LocalStore:
         finally:
             db.close()
 
-    def mark_all_read(self, user_id):
+    def mark_all_read(self, user_id: str):
         db = self._session()
         try:
-            db.query(Notification).filter(Notification.userId == user_id, Notification.read == False).update({"read": True})
+            db.query(Notification).filter(Notification.userId == user_id, Notification.read == False).update({"read": True})  # noqa: E712
             db.commit()
             return True
+        finally:
+            db.close()
+
+    # ---------- activity logs & feedback ----------
+    def list_activity_logs(self, limit: int = 100):
+        db = self._session()
+        try:
+            rows = db.query(ActivityLog).order_by(ActivityLog.createdAt.desc()).limit(limit).all()
+            return [
+                {
+                    "id": r.id,
+                    "actorId": r.actorId,
+                    "actorName": r.actorName,
+                    "actorRole": r.actorRole,
+                    "action": r.action,
+                    "targetType": r.targetType,
+                    "targetId": r.targetId,
+                    "detail": r.detail,
+                    "metadata": r.metadataJson or {},
+                    "createdAt": r.createdAt,
+                }
+                for r in rows
+            ]
+        finally:
+            db.close()
+
+    def list_feedback(self, limit: int = 100):
+        db = self._session()
+        try:
+            rows = db.query(Feedback).order_by(Feedback.createdAt.desc()).limit(limit).all()
+            return [
+                {
+                    "id": r.id,
+                    "name": r.name,
+                    "email": r.email,
+                    "message": r.message,
+                    "rating": r.rating,
+                    "userId": r.userId,
+                    "createdAt": r.createdAt,
+                }
+                for r in rows
+            ]
         finally:
             db.close()
 
@@ -355,12 +745,17 @@ class LocalStore:
             if city_id:
                 q = q.filter(User.cityId == city_id)
             users = sorted(q.all(), key=lambda u: u.stars or 0, reverse=True)
-            return [self._user_dict(u) for u in users[:50]]
+            out = []
+            for u in users[:50]:
+                d = self._user_dict(u)
+                d.pop("password", None)
+                out.append(d)
+            return out
         finally:
             db.close()
 
     # ---------- volunteer ----------
-    def join_volunteer(self, user_id):
+    def join_volunteer(self, user_id: str):
         db = self._session()
         try:
             u = db.query(User).filter(User.id == user_id).first()
@@ -369,21 +764,22 @@ class LocalStore:
             u.isVolunteer = True
             u.stars = (u.stars or 0) + 15
             db.commit()
-            return self._user_dict(u)
+            d = self._user_dict(u)
+            d.pop("password", None)
+            return d
         finally:
             db.close()
 
-    # ---------- cities ----------
+    # ---------- cities / categories ----------
     def cities(self):
         return CITIES
 
-    def sectors(self, city_id):
+    def sectors(self, city_id: str):
         return [s for s in SECTORS if s["cityId"] == city_id]
 
     def categories(self):
-        from services.seed_data import CATEGORIES, SUB_CATEGORIES
         return CATEGORIES
 
-    def sub_categories(self, category_id):
-        from services.seed_data import SUB_CATEGORIES
-        return [s for s in SUB_CATEGORIES if s["categoryId"] == category_id]
+    def sub_categories(self, category_id: str):
+        norm = normalize_category_id(category_id)
+        return [s for s in SUB_CATEGORIES if s["categoryId"] == norm]

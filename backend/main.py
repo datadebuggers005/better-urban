@@ -5,7 +5,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from core.config import get_settings
+from core.brand import brand
 from core.firebase import init_firebase
 
 from routers import (
@@ -19,6 +21,7 @@ from routers import (
     admin as admin_router,
     vision as vision_router,
     feedback as feedback_router,
+    uploads as uploads_router,
 )
 
 settings = get_settings()
@@ -26,7 +29,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="Backend API for Better Urban — 3 km civic + emergency dispatch network.",
+    description=f"Backend API for {brand.full_name} — civic issue reporting, live mapping & ward dispatch.",
 )
 
 app.add_middleware(
@@ -36,6 +39,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+os.makedirs(settings.upload_dir, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
 
 
 @app.on_event("startup")
@@ -56,23 +62,21 @@ app.include_router(volunteer_router.router, prefix="/api", tags=["volunteer"])
 app.include_router(admin_router.router, prefix="/api/admin", tags=["admin"])
 app.include_router(vision_router.router, prefix="/api", tags=["vision"])
 app.include_router(feedback_router.router, prefix="/api", tags=["feedback"])
+app.include_router(uploads_router.router, prefix="/api", tags=["uploads"])
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": settings.app_name, "version": settings.app_version}
+    return {"status": "ok", "service": settings.app_name, "brand": brand.full_name, "version": settings.app_version}
 
 
 @app.get("/api/debug/db")
 def debug_db():
-    from core.config import get_settings
     s = get_settings()
     if s.db_backend == "local":
-        from db.models import SessionLocal, User, Incident, Notification
+        from db.models import SessionLocal, User, Incident, Notification, init_db
         db = SessionLocal()
         try:
-            # ensure tables exist
-            from db.models import init_db
             init_db()
             return {
                 "backend": s.db_backend,
@@ -82,21 +86,21 @@ def debug_db():
                     "incidents": db.query(Incident).count(),
                     "notifications": db.query(Notification).count(),
                 },
-                "demo_user": {"email": "demo@betterurban.app", "password": "demo1234"},
+                "demo_user": {"email": "demo@ocor.city", "password": "demo1234"},
             }
         finally:
             db.close()
-    # Firebase mode
     try:
+        db = init_firebase()
         from core.firebase import get_db
-        db = get_db()
-        users = len(list(db.collection("users").stream()))
-        incidents = len(list(db.collection("incidents").stream()))
-        notifications = len(list(db.collection("notifications").stream()))
+        fdb = get_db()
+        users = len(list(fdb.collection("users").stream()))
+        incidents = len(list(fdb.collection("incidents").stream()))
+        notifications = len(list(fdb.collection("notifications").stream()))
         return {
             "backend": s.db_backend,
             "counts": {"users": users, "incidents": incidents, "notifications": notifications},
-            "demo_user": {"email": "demo@betterurban.app", "password": "demo1234"},
+            "demo_user": {"email": "demo@ocor.city", "password": "demo1234"},
         }
     except Exception as exc:  # noqa: BLE001
         return {"backend": s.db_backend, "error": str(exc)}

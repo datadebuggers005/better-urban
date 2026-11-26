@@ -3,20 +3,21 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppFrame } from "@/components/app-frame";
-import { BrandMark, Progress } from "@/components/ui";
+import { Progress } from "@/components/ui";
 import { useApp } from "@/lib/store";
+import { BRAND } from "@/lib/brand";
 
 export default function SplashPage() {
   const router = useRouter();
   const hydrated = useApp((s) => s.hydrated);
   const onboarded = useApp((s) => s.onboarded);
   const sessionUserId = useApp((s) => s.sessionUserId);
-  const [progress, setProgress] = useState(12);
+  const [progress, setProgress] = useState(14);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
-      setProgress((value) => (value >= 92 ? value : value + 7));
-    }, 140);
+      setProgress((value) => (value >= 94 ? value : value + 8));
+    }, 130);
     return () => window.clearInterval(interval);
   }, []);
 
@@ -26,7 +27,7 @@ export default function SplashPage() {
       if (!onboarded) router.replace("/onboarding");
       else if (sessionUserId) router.replace("/app");
       else router.replace("/auth");
-    }, 1650);
+    }, 1500);
     return () => window.clearTimeout(timer);
   }, [hydrated, onboarded, sessionUserId, router]);
 
@@ -34,38 +35,46 @@ export default function SplashPage() {
     <AppFrame nav={false}>
       <div className="flex min-h-full flex-col px-6 pb-8 pt-5">
         <div className="flex items-center justify-between">
-          <span className="label-caps">WF-01 // Splash</span>
+          <span className="label-caps">OCOR // Splash</span>
           <span className="text-[9.5px] uppercase tracking-[0.16em] text-muted">v1.0</span>
         </div>
 
         <div className="flex flex-1 flex-col items-center justify-center text-center">
-          <BrandMark size={86} className="text-ink" />
-          <h1 className="mt-6 font-display text-[30px] font-semibold tracking-tight">
-            Better Urban
+          <div className="rounded-2xl border border-line bg-white p-4 shadow-[var(--shadow-soft)]">
+            <img
+              src={BRAND.logo}
+              alt={BRAND.fullName}
+              className="h-28 w-auto object-contain"
+            />
+          </div>
+          <h1 className="mt-6 font-display text-[26px] font-bold tracking-tight text-ink">
+            {BRAND.name}
           </h1>
-          <p className="mt-1 font-display text-[14px] text-ink/60">Better Together</p>
+          <p className="mt-1 font-display text-[14px] font-medium text-primary">
+            {BRAND.tagline}
+          </p>
 
           <div className="mt-6 flex w-44 items-center gap-3">
             <span className="h-px flex-1 bg-line-strong" />
-            <span className="size-1 rounded-full bg-ink/40" />
+            <span className="size-1.5 rounded-full bg-secondary" />
             <span className="h-px flex-1 bg-line-strong" />
           </div>
 
-          <p className="mt-6 max-w-[250px] text-[12.5px] leading-relaxed text-muted">
-            We don&apos;t just solve problems. We build civilised citizens.
+          <p className="mt-5 max-w-[260px] text-[12.5px] leading-relaxed text-muted">
+            {BRAND.line}
           </p>
 
-          <div className="mt-10 w-40">
+          <div className="mt-8 w-44">
             <Progress value={progress} />
             <p className="mt-2.5 text-[10.5px] uppercase tracking-[0.16em] text-muted">
-              Locating city grid…
+              Loading city grid…
             </p>
           </div>
         </div>
 
         <div className="space-y-1 text-center text-[9.5px] uppercase tracking-[0.18em] text-muted/80">
-          <p>Civic &amp; Emergency Dispatch Network</p>
-          <p>3.0 km radius enabled</p>
+          <p>Civic Issue Reporting &amp; Live City Map</p>
+          <p>Citizen · Officer · Admin</p>
         </div>
       </div>
     </AppFrame>

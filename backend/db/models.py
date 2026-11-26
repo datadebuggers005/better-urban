@@ -5,7 +5,10 @@ from core.config import get_settings
 
 _settings = get_settings()
 DATABASE_URL = os.getenv("DATABASE_URL", _settings.database_url)
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {})
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -36,6 +39,7 @@ class Incident(Base):
     code = Column(String, unique=True, nullable=False)
     cityId = Column(String, nullable=False)
     sectorId = Column(String, nullable=False)
+    wardNumber = Column(Integer, nullable=True)
     categoryId = Column(String, nullable=False)
     subCategoryId = Column(String, nullable=False)
     title = Column(String, nullable=False)
@@ -44,10 +48,11 @@ class Incident(Base):
     lng = Column(Float, nullable=False)
     landmark = Column(String, default="")
     photoUrl = Column(String, nullable=True)
+    tags = Column(JSON, default=list)
     isAnonymous = Column(Boolean, default=False)
     reporterId = Column(String, nullable=True)
     reporterName = Column(String, default="Anonymous citizen")
-    status = Column(String, default="dispatched")
+    status = Column(String, default="submitted")
     severity = Column(String, default="medium")
     radiusKm = Column(Float, default=3.0)
     alertedCount = Column(Integer, default=0)
@@ -55,8 +60,12 @@ class Incident(Base):
     notifiedNgos = Column(JSON, default=list)
     events = Column(JSON, default=list)
     helpedBy = Column(JSON, default=list)
+    assignedTo = Column(String, nullable=True)
+    assignedToName = Column(String, nullable=True)
+    duplicateOf = Column(String, nullable=True)
     createdAt = Column(String, nullable=False)
     resolvedAt = Column(String, nullable=True)
+    closedAt = Column(String, nullable=True)
     rating = Column(Integer, nullable=True)
     ratingComment = Column(Text, nullable=True)
 
@@ -73,10 +82,6 @@ class Notification(Base):
     read = Column(Boolean, default=False)
 
 
-def init_db():
-    Base.metadata.create_all(bind=engine)
-
-
 class Feedback(Base):
     __tablename__ = "feedback"
     id = Column(String, primary_key=True)
@@ -86,3 +91,21 @@ class Feedback(Base):
     rating = Column(Integer, nullable=True)
     createdAt = Column(String, nullable=False)
     userId = Column(String, nullable=True)
+
+
+class ActivityLog(Base):
+    __tablename__ = "activity_logs"
+    id = Column(String, primary_key=True)
+    actorId = Column(String, nullable=True)
+    actorName = Column(String, nullable=False)
+    actorRole = Column(String, nullable=False)
+    action = Column(String, nullable=False)
+    targetType = Column(String, nullable=False)
+    targetId = Column(String, nullable=False)
+    detail = Column(Text, default="")
+    metadataJson = Column(JSON, default=dict)
+    createdAt = Column(String, nullable=False)
+
+
+def init_db():
+    Base.metadata.create_all(bind=engine)

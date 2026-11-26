@@ -7,14 +7,13 @@ import {
   Bell,
   Construction,
   Droplets,
-  Flame,
-  HeartPulse,
+  Lightbulb,
   MoreHorizontal,
-  Shield,
   Star,
   Trash2,
   Waves,
 } from "lucide-react";
+import { BRAND } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 import type { CategoryId, IncidentStatus, Severity } from "@/lib/types";
 import { STATUS_META } from "@/lib/catalog";
@@ -45,7 +44,7 @@ export function BrandMark({ className, size = 44 }: { className?: string; size?:
 export function Wordmark({ small = false }: { small?: boolean }) {
   return (
     <span className={cn("font-display font-semibold tracking-tight", small ? "text-[15px]" : "text-[19px]")}>
-      Better Urban
+      {BRAND.name}
     </span>
   );
 }
@@ -72,7 +71,7 @@ export function Button({ className, variant = "primary", size = "md", ...props }
           "border border-line bg-white text-ink hover:border-line-strong hover:bg-paper",
         variant === "ghost" && "text-ink hover:bg-ink/5",
         variant === "danger" && "bg-danger-soft text-danger hover:bg-danger/10",
-        variant === "gold" && "bg-gold-soft text-[#8a5f17] hover:bg-gold/20",
+        variant === "gold" && "bg-gold-soft text-secondary-50 hover:bg-gold/20",
         className,
       )}
       {...props}
@@ -133,7 +132,7 @@ export function Pill({
       className={cn(
         "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.06em]",
         tone === "neutral" && "bg-ink/5 text-ink/70",
-        tone === "gold" && "bg-gold-soft text-[#8a5f17]",
+        tone === "gold" && "bg-gold-soft text-secondary-50",
         tone === "green" && "bg-green-soft text-green",
         tone === "danger" && "bg-danger-soft text-danger",
         className,
@@ -337,13 +336,10 @@ export function NotificationButton({ count = 0 }: { count?: number }) {
 
 const ICONS = {
   road: Construction,
-  fire: Flame,
-  medical: HeartPulse,
-  drainage: Waves,
   water: Droplets,
-  waste: Trash2,
-  safety: Shield,
-  other: MoreHorizontal,
+  garbage: Trash2,
+  drainage: Waves,
+  streetlight: Lightbulb,
 } as const;
 
 export function CategoryIcon({

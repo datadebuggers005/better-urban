@@ -7,6 +7,7 @@ import { ArrowRight, Eye, EyeOff, ShieldCheck, Sparkles } from "lucide-react";
 import { AppFrame, HydrationGate } from "@/components/app-frame";
 import { Button, ErrorNote, FieldLabel, Select, TextInput, Wordmark } from "@/components/ui";
 import { useApp } from "@/lib/store";
+import { BRAND } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
 type Mode = "signin" | "signup";
@@ -24,47 +25,76 @@ function AuthScreen() {
   const [password, setPassword] = useState("");
   const [cityId, setCityId] = useState("metro");
   const [showPassword, setShowPassword] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const submit = () => {
+  const submit = async () => {
     setError(null);
-    if (mode === "signin") {
-      const result = login(email, password);
+    setBusy(true);
+    try {
+      if (mode === "signin") {
+        const result = await login(email, password);
+        if (!result.ok) {
+          setError(result.error ?? "Could not sign in.");
+          return;
+        }
+        router.push("/app");
+        return;
+      }
+      const result = await signup({ name, email, password, cityId });
+      if (!result.ok) {
+        setError(result.error ?? "Could not create the account.");
+        return;
+      }
+      router.push("/app");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const enterDemo = async () => {
+    setBusy(true);
+    try {
+      await demoLogin();
+      router.push("/app");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const quickRoleFill = async (roleEmail: string, rolePass: string, dest: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await login(roleEmail, rolePass);
       if (!result.ok) {
         setError(result.error ?? "Could not sign in.");
         return;
       }
-      router.push("/app");
-      return;
+      router.push(dest);
+    } finally {
+      setBusy(false);
     }
-    const result = signup({ name, email, password, cityId });
-    if (!result.ok) {
-      setError(result.error ?? "Could not create the account.");
-      return;
-    }
-    router.push("/app");
-  };
-
-  const enterDemo = () => {
-    demoLogin();
-    router.push("/app");
   };
 
   return (
     <AppFrame nav={false}>
       <div className="flex min-h-full flex-col px-5 pb-6 pt-5">
         <div className="flex items-center justify-between">
-          <Wordmark small />
-          <span className="label-caps">Citizen access</span>
+          <div className="flex items-center gap-2">
+            <img src={BRAND.logo} alt={BRAND.name} className="h-6 w-auto rounded object-contain" />
+            <Wordmark small />
+          </div>
+          <span className="label-caps">Citizen &amp; Staff Access</span>
         </div>
 
         <div className="mt-5">
-          <span className="label-caps">WF-03 // Sign in</span>
-          <h1 className="mt-1.5 font-display text-[26px] font-semibold leading-tight tracking-tight">
-            {mode === "signin" ? "Sign in to Better Urban" : "Join Better Urban"}
+          <span className="label-caps">Our City, Our Responsibility</span>
+          <h1 className="mt-1.5 font-display text-[24px] font-semibold leading-tight tracking-tight">
+            {mode === "signin" ? `Sign in to ${BRAND.name}` : `Join ${BRAND.name}`}
           </h1>
-          <p className="mt-2 max-w-[330px] text-[12.5px] leading-relaxed text-muted">
-            Verify your identity to report civic issues and receive local alerts inside a 3 km radius.
+          <p className="mt-1.5 max-w-[330px] text-[12.5px] leading-relaxed text-muted">
+            Report civic issues with photos and GPS, track live ward resolution, and collaborate with city officers.
           </p>
         </div>
 
@@ -79,7 +109,7 @@ function AuthScreen() {
               }}
               className={cn(
                 "rounded-lg py-2 text-[12px] font-semibold transition",
-                mode === item ? "bg-ink text-cream" : "text-muted hover:text-ink",
+                mode === item ? "bg-primary text-white" : "text-muted hover:text-ink",
               )}
             >
               {item === "signin" ? "Sign in" : "Create account"}
@@ -101,11 +131,11 @@ function AuthScreen() {
           ) : null}
 
           <div>
-            <FieldLabel>Email or phone</FieldLabel>
+            <FieldLabel>Email</FieldLabel>
             <TextInput
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              placeholder="+91 98765 43210 or name@city.org"
+              placeholder="name@ocor.city"
               autoComplete="email"
               inputMode="email"
             />
@@ -148,32 +178,52 @@ function AuthScreen() {
 
           {error ? <ErrorNote>{error}</ErrorNote> : null}
 
-          <Button size="lg" className="w-full" onClick={submit}>
-            {mode === "signin" ? "Sign in" : "Create account"}
+          <Button size="lg" className="w-full" onClick={submit} disabled={busy}>
+            {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
             <ArrowRight className="size-4" />
           </Button>
         </div>
 
         <div className="my-4 flex items-center gap-3">
           <span className="h-px flex-1 bg-line" />
-          <span className="text-[10px] uppercase tracking-[0.16em] text-muted">or</span>
+          <span className="text-[10px] uppercase tracking-[0.16em] text-muted">Quick Demo Roles</span>
           <span className="h-px flex-1 bg-line" />
         </div>
 
-        <Button variant="secondary" size="lg" className="w-full" onClick={enterDemo}>
-          <Sparkles className="size-4" />
-          Continue with demo citizen
-        </Button>
+        <div className="space-y-2">
+          <Button variant="secondary" size="lg" className="w-full" onClick={enterDemo} disabled={busy}>
+            <Sparkles className="size-4 text-primary" />
+            Demo Citizen (demo@ocor.city)
+          </Button>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => quickRoleFill("officer@ocor.city", "officer1234", "/admin")}
+              disabled={busy}
+            >
+              Officer Login
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => quickRoleFill("admin@ocor.city", "admin1234", "/admin")}
+              disabled={busy}
+            >
+              Admin Login
+            </Button>
+          </div>
+        </div>
 
-        <div className="mt-4 rounded-xl border border-line bg-white/70 p-3">
+        <div className="mt-4 rounded-xl border border-line bg-white/80 p-3">
           <div className="flex items-center gap-2">
-            <ShieldCheck className="size-4 text-muted" />
-            <p className="text-[11px] font-semibold">Why demo login?</p>
+            <ShieldCheck className="size-4 text-primary" />
+            <p className="text-[11px] font-semibold">Local RBAC Accounts</p>
           </div>
           <p className="mt-1 text-[11px] leading-relaxed text-muted">
-            This prototype stores everything in your browser. OTP and SMS are intentionally disabled.
-            Demo account: <span className="font-medium text-ink">demo@betterurban.app</span> /{" "}
-            <span className="font-medium text-ink">demo1234</span>
+            Citizen: <span className="font-medium text-ink">demo@ocor.city</span> / demo1234 ·
+            Officer: <span className="font-medium text-ink">officer@ocor.city</span> / officer1234 ·
+            Admin: <span className="font-medium text-ink">admin@ocor.city</span> / admin1234
           </p>
         </div>
 
@@ -181,7 +231,7 @@ function AuthScreen() {
           {mode === "signin" ? "New citizen?" : "Already have an account?"}{" "}
           <button
             type="button"
-            className="font-semibold text-ink underline-offset-4 hover:underline"
+            className="font-semibold text-primary underline-offset-4 hover:underline"
             onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
           >
             {mode === "signin" ? "Create an account" : "Sign in"}
@@ -190,7 +240,7 @@ function AuthScreen() {
 
         <p className="mt-3 text-center text-[9.5px] uppercase tracking-[0.16em] text-muted/70">
           <Link href="/landing" className="hover:text-ink">
-            About the project
+            About {BRAND.fullName}
           </Link>
         </p>
       </div>

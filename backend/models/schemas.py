@@ -1,9 +1,11 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List, Literal
-from datetime import datetime
 
 
 # ---------- User ----------
+RoleType = Literal["citizen", "officer", "admin"]
+
+
 class UserCreate(BaseModel):
     name: str
     email: str
@@ -41,9 +43,22 @@ class UserOut(BaseModel):
     createdAt: Optional[str] = None
 
 
+class RoleUpdate(BaseModel):
+    role: RoleType
+
+
 # ---------- Incident ----------
-IncidentStatus = Literal["reported", "dispatched", "acknowledged", "in_progress", "resolved"]
+IncidentStatus = Literal[
+    "submitted",
+    "under_review",
+    "verified",
+    "assigned",
+    "in_progress",
+    "resolved",
+    "closed",
+]
 Severity = Literal["low", "medium", "high", "critical"]
+MapColor = Literal["RED", "YELLOW", "GREEN"]
 
 
 class IncidentCreate(BaseModel):
@@ -53,11 +68,15 @@ class IncidentCreate(BaseModel):
     note: str = ""
     lat: float
     lng: float
+    cityId: Optional[str] = None
     sectorId: str
+    wardNumber: Optional[int] = None
     landmark: str = ""
     photoUrl: Optional[str] = None
+    tags: List[str] = []
     isAnonymous: bool = False
     severity: Severity = "medium"
+    duplicateOf: Optional[str] = None
 
 
 class IncidentEvent(BaseModel):
@@ -73,6 +92,7 @@ class IncidentOut(BaseModel):
     code: str
     cityId: str
     sectorId: str
+    wardNumber: Optional[int] = None
     categoryId: str
     subCategoryId: str
     title: str
@@ -81,10 +101,12 @@ class IncidentOut(BaseModel):
     lng: float
     landmark: str = ""
     photoUrl: Optional[str] = None
+    tags: List[str] = []
     isAnonymous: bool = False
     reporterId: Optional[str] = None
     reporterName: str = "Anonymous citizen"
     status: IncidentStatus
+    mapColor: MapColor = "RED"
     severity: Severity
     radiusKm: float = 3.0
     alertedCount: int = 0
@@ -92,14 +114,28 @@ class IncidentOut(BaseModel):
     notifiedNgos: List[str] = []
     events: List[IncidentEvent] = []
     helpedBy: List[str] = []
+    assignedTo: Optional[str] = None
+    assignedToName: Optional[str] = None
+    duplicateOf: Optional[str] = None
     createdAt: str
     resolvedAt: Optional[str] = None
+    closedAt: Optional[str] = None
     rating: Optional[int] = None
     ratingComment: Optional[str] = None
 
 
 class StatusUpdate(BaseModel):
     status: IncidentStatus
+    note: Optional[str] = None
+    assignedTo: Optional[str] = None
+    assignedToName: Optional[str] = None
+
+
+class DuplicateCheckRequest(BaseModel):
+    lat: float
+    lng: float
+    categoryId: str
+    cityId: Optional[str] = None
 
 
 class RatingInput(BaseModel):
@@ -131,6 +167,7 @@ class SectorOut(BaseModel):
     id: str
     cityId: str
     name: str
+    wardNumber: int
     lat: float
     lng: float
 

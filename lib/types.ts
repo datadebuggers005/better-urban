@@ -1,23 +1,19 @@
-export type CategoryId =
-  | "road"
-  | "fire"
-  | "medical"
-  | "drainage"
-  | "water"
-  | "waste"
-  | "safety"
-  | "other";
+export type CategoryId = "road" | "water" | "garbage" | "drainage" | "streetlight";
 
 export type IncidentStatus =
-  | "reported"
-  | "dispatched"
-  | "acknowledged"
+  | "submitted"
+  | "under_review"
+  | "verified"
+  | "assigned"
   | "in_progress"
-  | "resolved";
+  | "resolved"
+  | "closed";
+
+export type MapColor = "RED" | "YELLOW" | "GREEN";
 
 export type Severity = "low" | "medium" | "high" | "critical";
 
-export type Role = "citizen" | "volunteer" | "admin";
+export type Role = "citizen" | "officer" | "admin";
 
 export type City = {
   id: string;
@@ -30,6 +26,7 @@ export type Sector = {
   id: string;
   cityId: string;
   name: string;
+  wardNumber: number;
   lat: number;
   lng: number;
 };
@@ -53,7 +50,7 @@ export type User = {
   name: string;
   email: string;
   phone: string;
-  password: string;
+  password?: string;
   cityId: string;
   sectorId: string;
   stars: number;
@@ -69,7 +66,7 @@ export type User = {
 
 export type IncidentEvent = {
   id: string;
-  kind: "reported" | "dispatch" | "status" | "volunteer" | "feedback";
+  kind: "submitted" | "reported" | "dispatch" | "status" | "volunteer" | "feedback";
   label: string;
   detail?: string;
   at: string;
@@ -80,6 +77,7 @@ export type Incident = {
   code: string;
   cityId: string;
   sectorId: string;
+  wardNumber: number;
   categoryId: CategoryId;
   subCategoryId: string;
   title: string;
@@ -88,10 +86,12 @@ export type Incident = {
   lng: number;
   landmark: string;
   photoUrl: string | null;
+  tags: string[];
   isAnonymous: boolean;
   reporterId: string | null;
   reporterName: string;
   status: IncidentStatus;
+  mapColor: MapColor;
   severity: Severity;
   radiusKm: number;
   alertedCount: number;
@@ -99,8 +99,12 @@ export type Incident = {
   notifiedNgos: string[];
   events: IncidentEvent[];
   helpedBy: string[];
+  assignedTo?: string | null;
+  assignedToName?: string | null;
+  duplicateOf?: string | null;
   createdAt: string;
   resolvedAt: string | null;
+  closedAt?: string | null;
   rating: number | null;
   ratingComment: string | null;
 };
@@ -124,8 +128,87 @@ export type NewIncidentInput = {
   landmark: string;
   lat: number;
   lng: number;
+  cityId?: string;
   sectorId: string;
+  wardNumber?: number;
   photoUrl: string | null;
+  tags?: string[];
   isAnonymous: boolean;
   severity: Severity;
+  duplicateOf?: string | null;
+};
+
+export type DuplicateMatch = {
+  id: string;
+  code: string;
+  title: string;
+  status: IncidentStatus;
+  wardNumber: number;
+  distanceMeters: number;
+  createdAt: string;
+};
+
+export type DuplicateCluster = {
+  primary: {
+    id: string;
+    code: string;
+    title: string;
+    categoryId: CategoryId;
+    wardNumber: number;
+    status: IncidentStatus;
+  };
+  duplicates: DuplicateMatch[];
+};
+
+export type ActivityLog = {
+  id: string;
+  actorId?: string | null;
+  actorName: string;
+  actorRole: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  detail: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+};
+
+export type DataQualityReport = {
+  totalIncidents: number;
+  healthyIncidents: number;
+  flaggedIncidents: number;
+  qualityScore: number;
+  summary: {
+    invalidCoordinates: number;
+    missingWardNumber: number;
+    missingPhoto: number;
+    orphanReporter: number;
+    invalidStatus: number;
+  };
+  flaggedRecords: Array<{
+    incidentId: string;
+    code: string;
+    title: string;
+    issues: string[];
+  }>;
+};
+
+export type DataSource = {
+  id: string;
+  name: string;
+  source: string;
+  category: string;
+  refreshCycle: string;
+  lastUpdated: string;
+  status: string;
+};
+
+export type FeedbackItem = {
+  id: string;
+  name?: string;
+  email?: string;
+  message: string;
+  rating?: number | null;
+  userId?: string | null;
+  createdAt: string;
 };

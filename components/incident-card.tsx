@@ -1,17 +1,19 @@
 import Link from "next/link";
 import { Clock3, MapPin, Users } from "lucide-react";
 import type { Incident } from "@/lib/types";
-import { categoryById, subCategoryById } from "@/lib/catalog";
+import { categoryById } from "@/lib/catalog";
+import { resolveMediaUrl } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 import { CategoryIcon, SeverityBadge, StatusBadge } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
 export function IncidentThumb({ incident, size = 46 }: { incident: Incident; size?: number }) {
   const category = categoryById(incident.categoryId);
-  if (incident.photoUrl) {
+  const src = resolveMediaUrl(incident.photoUrl);
+  if (src) {
     return (
       <img
-        src={incident.photoUrl}
+        src={src}
         alt={incident.title}
         className="shrink-0 rounded-xl object-cover"
         style={{ width: size, height: size }}
@@ -47,7 +49,6 @@ export function IncidentCard({
   href?: string;
   className?: string;
 }) {
-  const sub = subCategoryById(incident.subCategoryId);
   const category = categoryById(incident.categoryId);
 
   return (
@@ -67,21 +68,35 @@ export function IncidentCard({
                 {incident.title}
               </p>
               <p className="mt-0.5 truncate text-[11.5px] text-muted">
-                {category.short} · {incident.code}
+                {category.short} · {incident.code} · Ward {incident.wardNumber}
               </p>
             </div>
             {showStatus ? <StatusBadge status={incident.status} /> : null}
           </div>
-          <p className="mt-1.5 line-clamp-2 text-[12px] leading-relaxed text-ink/70">
-            {incident.note}
-          </p>
+          {incident.note ? (
+            <p className="mt-1.5 line-clamp-2 text-[12px] leading-relaxed text-ink/70">
+              {incident.note}
+            </p>
+          ) : null}
+          {incident.tags && incident.tags.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {incident.tags.slice(0, 3).map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full bg-paper px-2 py-0.5 text-[10px] font-medium text-muted"
+                >
+                  #{tag}
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
 
       <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-line/70 pt-2.5 text-[11px] text-muted">
         <span className="inline-flex items-center gap-1">
           <MapPin className="size-3" />
-          {incident.landmark}
+          {incident.landmark || `Ward ${incident.wardNumber}`}
         </span>
         <span className="inline-flex items-center gap-1">
           <Clock3 className="size-3" />

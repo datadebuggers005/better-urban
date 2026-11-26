@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from core.config import get_settings
 from db.store import is_local, get_store
-from services.seed_data import CITIES, SECTORS, CATEGORIES, SUB_CATEGORIES
+from services.seed_data import CITIES, SECTORS, CATEGORIES, SUB_CATEGORIES, DATA_SOURCES
 
 router = APIRouter()
 
@@ -42,3 +42,8 @@ def get_sector(sector_id: str):
             return s
     from fastapi import HTTPException
     raise HTTPException(404, "Sector not found")
+
+
+@router.get("/data-sources")
+def list_data_sources():
+    return DATA_SOURCES
