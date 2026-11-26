@@ -1,5 +1,5 @@
 """Proximity-based duplicate complaint detection."""
-from typing import List, Dict
+from typing import Optional, List, Dict
 from utils.geo import haversine_km
 from services.seed_data import normalize_category_id
 
@@ -9,7 +9,7 @@ def find_duplicates(
     lat: float,
     lng: float,
     category_id: str,
-    city_id: str | None = None,
+    city_id: Optional[str] = None,
     threshold_meters: float = 100.0,
 ) -> List[Dict]:
     """Return existing open/active incidents within threshold_meters with the same category."""

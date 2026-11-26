@@ -1,6 +1,7 @@
 """Local SQLite-backed store implementing the same operations as the Firestore backend."""
 import random
 from datetime import datetime, timezone
+from typing import Optional
 from sqlalchemy.orm import Session
 
 from core.auth import hash_password
@@ -531,9 +532,9 @@ class LocalStore:
         incident_id: str,
         status: str,
         actor: dict,
-        note: str | None = None,
-        assigned_to: str | None = None,
-        assigned_to_name: str | None = None,
+        note: Optional[str] = None,
+        assigned_to: Optional[str] = None,
+        assigned_to_name: Optional[str] = None,
     ):
         db = self._session()
         try:
@@ -598,7 +599,7 @@ class LocalStore:
         finally:
             db.close()
 
-    def rate_incident(self, incident_id: str, user_id: str, rating: int, comment: str | None = None):
+    def rate_incident(self, incident_id: str, user_id: str, rating: int, comment: Optional[str] = None):
         db = self._session()
         try:
             inc = db.query(Incident).filter(Incident.id == incident_id).first()
@@ -635,7 +636,7 @@ class LocalStore:
             db.close()
 
     # ---------- notifications ----------
-    def add_notification(self, user_id: str, title: str, body: str, ntype: str = "system", incident_id: str | None = None):
+    def add_notification(self, user_id: str, title: str, body: str, ntype: str = "system", incident_id: Optional[str] = None):
         db = self._session()
         try:
             n = Notification(
