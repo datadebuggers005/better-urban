@@ -5,7 +5,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { Incident } from "@/lib/types";
 import { MAP_STATUS_TOKENS, OCOR_PALETTE } from "@/lib/theme";
-import { STATUS_META, categoryById } from "@/lib/catalog";
+import { STATUS_META, normalizeStatus, categoryById, mapColorForStatus } from "@/lib/catalog";
 
 export default function LiveCityMap({
   center,
@@ -53,10 +53,10 @@ export default function LiveCityMap({
     layer.clearLayers();
 
     for (const inc of incidents) {
-      const bucket = inc.mapColor || "RED";
-      const token = MAP_STATUS_TOKENS[bucket];
+      const bucket = mapColorForStatus(inc.status);
+      const token = MAP_STATUS_TOKENS[bucket] ?? MAP_STATUS_TOKENS.RED;
       const cat = categoryById(inc.categoryId);
-      const statusMeta = STATUS_META[inc.status];
+      const statusMeta = STATUS_META[normalizeStatus(inc.status)];
 
       const marker = L.circleMarker([inc.lat, inc.lng], {
         radius: 11,
