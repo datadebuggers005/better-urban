@@ -49,26 +49,50 @@ def activity_logs(limit: int = Query(50), user=Depends(require_officer_or_admin)
 def data_quality(user=Depends(require_officer_or_admin)):
     if is_local():
         return get_store().data_quality()
-    from services.data_quality import compute_data_quality
+    from services.data_quality import audit_data_quality
     db = get_db()
-    return compute_data_quality(db)
+    incidents = [d.to_dict() | {"id": d.id} for d in db.collection("incidents").stream()]
+    users = [d.to_dict() | {"id": d.id} for d in db.collection("users").stream()]
+    return audit_data_quality(incidents, users)
 
 
 @router.get("/data-sources")
 def data_sources(user=Depends(require_officer_or_admin)):
     if is_local():
         return get_store().data_sources()
-    from services.data_quality import data_sources as ds
-    return ds()
+    from services.seed_data import CITIES, SECTORS
+    return {
+        "sources": ["Seeded demo data", "Citizen reports"],
+        "lastUpdated": None,
+        "cities": len(CITIES),
+        "sectors": len(SECTORS),
+    }
 
 
 @router.get("/duplicates")
 def duplicates(user=Depends(require_officer_or_admin)):
     if is_local():
         return get_store().duplicates()
-    from services.duplicates import find_all_duplicates
+    from services.duplicates import find_duplicates
     db = get_db()
-    return find_all_duplicates(db)
+    docs = db.collection("incidents").stream()
+    incs = []
+    for d in docs:
+        x = d.to_dict()
+        x["id"] = d.id
+        incs.append(x)
+    groups = []
+    seen = set()
+    for a in incs:
+        if a["id"] in seen:
+            continue
+        matches = [m for m in find_duplicates(incs, a["lat"], a["lng"], a["categoryId"], a["cityId"]) if m["id"] != a["id"]]
+        if matches:
+            groups.append({"primary": a["id"], "duplicates": [m["id"] for m in matches]})
+            seen.add(a["id"])
+            for m in matches:
+                seen.add(m["id"])
+    return groups
 
 
 @router.get("/users")
