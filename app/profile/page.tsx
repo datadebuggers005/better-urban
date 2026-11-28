@@ -272,9 +272,9 @@ function ProfileScreen() {
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-[12.5px] font-semibold">City ops console</p>
-              <p className="text-[10.5px] text-muted">Demo view for authorities — move ticket status</p>
+              <p className="text-[10.5px] text-muted">Move ticket status, manage roles</p>
             </div>
-            <Pill tone="neutral">Demo</Pill>
+            <ChevronRight className="size-4 text-muted" />
           </Link>
           <Link href="/feedback" className="flex items-center gap-3 px-3.5 py-3">
             <span className="flex size-8 items-center justify-center rounded-lg bg-paper text-ink/70">

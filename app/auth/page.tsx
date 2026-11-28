@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowRight, Eye, EyeOff, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, Eye, EyeOff } from "lucide-react";
 import { AppFrame, HydrationGate } from "@/components/app-frame";
 import { Button, ErrorNote, FieldLabel, Select, TextInput, Wordmark } from "@/components/ui";
 import { useApp } from "@/lib/store";
@@ -17,7 +17,6 @@ function AuthScreen() {
   const cities = useApp((s) => s.cities);
   const login = useApp((s) => s.login);
   const signup = useApp((s) => s.signup);
-  const demoLogin = useApp((s) => s.demoLogin);
 
   const [mode, setMode] = useState<Mode>("signin");
   const [name, setName] = useState("");
@@ -47,31 +46,6 @@ function AuthScreen() {
         return;
       }
       router.push("/app");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const enterDemo = async () => {
-    setBusy(true);
-    try {
-      await demoLogin();
-      router.push("/app");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const quickRoleFill = async (roleEmail: string, rolePass: string, dest: string) => {
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await login(roleEmail, rolePass);
-      if (!result.ok) {
-        setError(result.error ?? "Could not sign in.");
-        return;
-      }
-      router.push(dest);
     } finally {
       setBusy(false);
     }
@@ -142,7 +116,7 @@ function AuthScreen() {
           </div>
 
           <div>
-            <FieldLabel hint={mode === "signin" ? "Demo: demo1234" : "6+ characters"}>
+            <FieldLabel hint={mode === "signin" ? "Your password" : "6+ characters"}>
               Password
             </FieldLabel>
             <div className="relative">
@@ -182,49 +156,6 @@ function AuthScreen() {
             {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
             <ArrowRight className="size-4" />
           </Button>
-        </div>
-
-        <div className="my-4 flex items-center gap-3">
-          <span className="h-px flex-1 bg-line" />
-          <span className="text-[10px] uppercase tracking-[0.16em] text-muted">Quick Demo Roles</span>
-          <span className="h-px flex-1 bg-line" />
-        </div>
-
-        <div className="space-y-2">
-          <Button variant="secondary" size="lg" className="w-full" onClick={enterDemo} disabled={busy}>
-            <Sparkles className="size-4 text-primary" />
-            Demo Citizen (demo@ocor.city)
-          </Button>
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => quickRoleFill("officer@ocor.city", "officer1234", "/admin")}
-              disabled={busy}
-            >
-              Officer Login
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => quickRoleFill("admin@ocor.city", "admin1234", "/admin")}
-              disabled={busy}
-            >
-              Admin Login
-            </Button>
-          </div>
-        </div>
-
-        <div className="mt-4 rounded-xl border border-line bg-white/80 p-3">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="size-4 text-primary" />
-            <p className="text-[11px] font-semibold">Local RBAC Accounts</p>
-          </div>
-          <p className="mt-1 text-[11px] leading-relaxed text-muted">
-            Citizen: <span className="font-medium text-ink">demo@ocor.city</span> / demo1234 ·
-            Officer: <span className="font-medium text-ink">officer@ocor.city</span> / officer1234 ·
-            Admin: <span className="font-medium text-ink">admin@ocor.city</span> / admin1234
-          </p>
         </div>
 
         <div className="mt-auto pt-5 text-center text-[11px] text-muted">

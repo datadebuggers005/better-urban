@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { BrandMark } from "@/components/ui";
 import { RadiusGraphic } from "@/components/radius-graphic";
+import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = {
   title: "OCOR — One report alerts 3 km of your city",
@@ -187,7 +188,7 @@ export default function LandingPage() {
                   href="/auth"
                   className="inline-flex h-11 items-center gap-2 rounded-xl bg-ink px-5 text-[13px] font-semibold text-cream shadow-[0_18px_36px_-22px_rgba(14,29,56,0.9)]"
                 >
-                  Try the demo citizen <ArrowRight className="size-4" />
+                  Try {BRAND.name} <ArrowRight className="size-4" />
                 </Link>
                 <a
                   href="#how"
@@ -197,8 +198,8 @@ export default function LandingPage() {
                 </a>
               </div>
               <div className="mt-5 flex flex-wrap gap-x-4 gap-y-1.5 text-[11px] text-muted">
-                <span className="inline-flex items-center gap-1"><Check className="size-3" /> No OTP in demo</span>
-                <span className="inline-flex items-center gap-1"><Check className="size-3" /> 5 cities, 1,600 demo citizens</span>
+                <span className="inline-flex items-center gap-1"><Check className="size-3" /> No OTP required</span>
+                <span className="inline-flex items-center gap-1"><Check className="size-3" /> 5 cities, 1,600 citizens</span>
                 <span className="inline-flex items-center gap-1"><Check className="size-3" /> Works on any phone</span>
               </div>
             </div>
@@ -453,8 +454,8 @@ export default function LandingPage() {
               Your street is one report away.
             </p>
             <p className="mx-auto mt-2 max-w-[440px] text-[12.5px] leading-relaxed text-muted">
-              Open the demo, pick a category, and watch a 3 km alert go out. No signup required — the demo
-              citizen is one tap away.
+              Open the app, pick a category, and watch a 3 km alert go out. Create an account in seconds —
+              no OTP required.
             </p>
             <div className="mt-5 flex flex-wrap justify-center gap-2.5">
               <Link

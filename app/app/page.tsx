@@ -12,7 +12,7 @@ import {
   Star,
   TrendingUp,
 } from "lucide-react";
-import { AppFrame, DemoBadge, HydrationGate } from "@/components/app-frame";
+import { AppFrame, HydrationGate } from "@/components/app-frame";
 import {
   Avatar,
   CategoryIcon,
@@ -125,7 +125,6 @@ function HomeScreen() {
           </div>
           <div className="flex items-center gap-1.5">
             <Pill tone="neutral">{user.role}</Pill>
-            <DemoBadge />
           </div>
         </div>
 
