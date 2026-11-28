@@ -1,20 +1,25 @@
 import httpx
 from fastapi import APIRouter, HTTPException, Depends
-from core.firebase import get_auth, get_db
 from core.auth import get_current_user, verify_password
-from db.store import get_store, is_local
+from core.firebase import get_auth, get_db
+from core.config import get_settings
+from db.store import is_local, get_store
 from models.schemas import SignupRequest, AuthResponse, UserOut
 
 router = APIRouter()
 
 DEMO_EMAIL = "demo@ocor.city"
 DEMO_PASSWORD = "demo1234"
+OFFICER_EMAIL = "officer@ocor.city"
+OFFICER_PASSWORD = "officer1234"
+ADMIN_EMAIL = "admin@ocor.city"
+ADMIN_PASSWORD = "admin1234"
 
 
 def _sector_for_city(city_id: str):
     from services.seed_data import SECTORS
     for s in SECTORS:
-        if s["cityId"] == city_id and s.get("wardNumber") == 18:
+        if s["cityId"] == city_id and s["name"] == "Sector 18":
             return s
     for s in SECTORS:
         if s["cityId"] == city_id:
@@ -34,7 +39,7 @@ def _profile_from_dict(data: dict) -> dict:
         "helped": data.get("helped", 0),
         "isVolunteer": data.get("isVolunteer", False),
         "skills": data.get("skills", []),
-        "preferredCategories": data.get("preferredCategories", ["road", "garbage"]),
+        "preferredCategories": data.get("preferredCategories", ["road", "waste"]),
         "alertsEnabled": data.get("alertsEnabled", True),
         "alertRadiusKm": data.get("alertRadiusKm", 3),
         "role": data.get("role", "citizen"),
@@ -52,15 +57,9 @@ def signup(body: SignupRequest):
         if len(body.password) < 6:
             raise HTTPException(400, "Use at least 6 characters for your password.")
         user = store.create_user(body.name, body.email, body.password, body.cityId)
-        store.add_notification(
-            user["id"],
-            "Welcome to OCOR — Our City, Our Responsibility",
-            "You start with 10 civic stars. Report an issue to help keep your ward clean and safe.",
-            ntype="system",
-        )
         token = f"local::{user['id']}"
         return AuthResponse(uid=user["id"], email=user["email"], idToken=token, profile=_profile_from_dict(user))
-
+    # Firebase path
     fb_auth = get_auth()
     db = get_db()
     try:
@@ -70,34 +69,25 @@ def signup(body: SignupRequest):
     sector = _sector_for_city(body.cityId)
     from datetime import datetime, timezone
     profile = {
-        "name": body.name.strip(),
-        "email": body.email.strip().lower(),
-        "phone": "",
-        "cityId": body.cityId,
-        "sectorId": sector["id"],
-        "stars": 10,
-        "helped": 0,
-        "isVolunteer": False,
-        "skills": [],
-        "preferredCategories": ["road", "garbage"],
-        "alertsEnabled": True,
-        "alertRadiusKm": 3,
-        "role": "citizen",
+        "name": body.name.strip(), "email": body.email.strip().lower(), "phone": "",
+        "cityId": body.cityId, "sectorId": sector["id"], "stars": 10, "helped": 0,
+        "isVolunteer": False, "skills": [], "preferredCategories": ["road", "waste"],
+        "alertsEnabled": True, "alertRadiusKm": 3, "role": "citizen",
         "createdAt": datetime.now(timezone.utc).isoformat(),
     }
     db.collection("users").document(user.uid).set(profile)
     db.collection("notifications").add({
-        "userId": user.uid,
-        "type": "system",
-        "title": "Welcome to OCOR — Our City, Our Responsibility",
-        "body": "You start with 10 stars. Report your first issue to activate your ward alert radius.",
-        "createdAt": profile["createdAt"],
-        "read": False,
+        "userId": user.uid, "type": "system",
+        "title": "Welcome to OCOR",
+        "body": "You start with 10 stars. Report your first issue to activate your 3 km alert radius.",
+        "createdAt": profile["createdAt"], "read": False,
     })
-    from core.config import get_settings as _gs
-    _s = _gs()
+    # Get ID token via REST
+    from core.config import get_settings
+    _s = get_settings()
     id_token = None
     try:
+        import httpx
         with httpx.Client(timeout=10) as _c:
             _r = _c.post(
                 f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={_s.firebase_web_api_key}",
@@ -123,11 +113,12 @@ async def login(body: dict):
             raise HTTPException(401, "Invalid email or password")
         token = f"local::{user['id']}"
         return AuthResponse(uid=user["id"], email=user["email"], idToken=token, profile=_profile_from_dict(user))
-
+    # Firebase path
     from core.config import get_settings
     settings = get_settings()
     if not settings.firebase_project_id:
         raise HTTPException(500, "FIREBASE_PROJECT_ID not configured")
+    import httpx
     url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={settings.firebase_web_api_key}"
     async with httpx.AsyncClient() as client:
         resp = await client.post(url, json={"email": email, "password": password, "returnSecureToken": True})
@@ -151,17 +142,12 @@ def demo_login():
         user = store.get_user_by_email(DEMO_EMAIL)
         if not user:
             user = store.create_user("Riya Sharma", DEMO_EMAIL, DEMO_PASSWORD, "metro")
-            store.update_user(user["id"], {
-                "stars": 340,
-                "helped": 6,
-                "isVolunteer": True,
-                "skills": ["Traffic Support", "First Aid"],
-                "sectorId": "metro-s18",
-            })
+            store.update_user(user["id"], {"stars": 340, "helped": 6, "isVolunteer": True,
+                                          "skills": ["Traffic Support", "First Aid"], "sectorId": "metro-s18"})
             user = store.get_user(user["id"])
         token = f"local::{user['id']}"
         return AuthResponse(uid=user["id"], email=user["email"], idToken=token, profile=_profile_from_dict(user))
-
+    # Firebase path
     fb_auth = get_auth()
     db = get_db()
     try:
@@ -176,17 +162,19 @@ def demo_login():
         profile = {
             "name": "Riya Sharma", "email": DEMO_EMAIL, "phone": "", "cityId": "metro",
             "sectorId": sector["id"], "stars": 340, "helped": 6, "isVolunteer": True,
-            "skills": ["Traffic Support", "First Aid"], "preferredCategories": ["road", "garbage"],
+            "skills": ["Traffic Support", "First Aid"], "preferredCategories": ["road", "waste"],
             "alertsEnabled": True, "alertRadiusKm": 3, "role": "citizen",
             "createdAt": datetime.now(timezone.utc).isoformat(),
         }
         db.collection("users").document(uid).set(profile)
     snap = db.collection("users").document(uid).get()
     profile = snap.to_dict() or {}
-    from core.config import get_settings as _gs
-    _s = _gs()
+    # Get ID token via REST
+    from core.config import get_settings
+    _s = get_settings()
     id_token = None
     try:
+        import httpx
         with httpx.Client(timeout=10) as _c:
             _r = _c.post(
                 f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={_s.firebase_web_api_key}",
@@ -199,6 +187,39 @@ def demo_login():
     if not id_token:
         id_token = fb_auth.create_custom_token(uid).decode()
     return AuthResponse(uid=uid, email=DEMO_EMAIL, idToken=id_token, profile=_profile_from_dict({**profile, "id": uid}))
+
+
+@router.post("/bootstrap")
+def bootstrap_accounts():
+    """Create demo/officer/admin accounts if they don't exist. Run once."""
+    if is_local():
+        store = get_store()
+        # local store already seeds these on first run
+        return {"ok": True, "mode": "local", "message": "Local DB already seeded with demo/officer/admin accounts."}
+    fb_auth = get_auth()
+    db = get_db()
+    accounts = [
+        ("demo@ocor.city", "demo1234", "Riya Sharma", "citizen", 340, 6, True, ["Traffic Support", "First Aid"], "metro-s18"),
+        ("officer@ocor.city", "officer1234", "Vikram Mehta", "officer", 120, 18, False, ["Field Inspection"], "metro-s5"),
+        ("admin@ocor.city", "admin1234", "Ananya Verma", "admin", 500, 42, False, ["Operations", "Dispatch"], "metro-s1"),
+    ]
+    created = []
+    from datetime import datetime, timezone
+    for email, password, name, role, stars, helped, is_vol, skills, sector in accounts:
+        try:
+            user = fb_auth.get_user_by_email(email)
+        except Exception:  # noqa: BLE001
+            user = fb_auth.create_user(email=email, password=password, display_name=name)
+        db.collection("users").document(user.uid).set({
+            "name": name, "email": email, "phone": "", "cityId": "metro",
+            "sectorId": sector, "stars": stars, "helped": helped,
+            "isVolunteer": is_vol, "skills": skills,
+            "preferredCategories": ["road", "waste"], "alertsEnabled": True,
+            "alertRadiusKm": 3 if role == "citizen" else (5 if role == "officer" else 10),
+            "role": role, "createdAt": datetime.now(timezone.utc).isoformat(),
+        }, merge=True)
+        created.append({"email": email, "role": role, "uid": user.uid})
+    return {"ok": True, "mode": "firebase", "accounts": created}
 
 
 @router.get("/me", response_model=UserOut)
